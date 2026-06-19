@@ -10,7 +10,7 @@
 var WORKER_CONFIG = {
   // Replace with your actual deployed Worker URL, e.g.
   // 'https://workout-tracker-proxy.your-subdomain.workers.dev'
-  baseUrl: 'YOUR_WORKER_URL_HERE',
+  baseUrl: 'https://workout-tracker-proxy.auckiefenstermacher19.workers.dev',
 
   get isConfigured() {
     return (
