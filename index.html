@@ -148,8 +148,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('day-grid').innerHTML =
       '<div class="error-state" style="margin: var(--space-4);">' +
       '<strong>config.js not configured.</strong><br><br>' +
-      'Open <code>config.js</code> and fill in your GitHub ' +
-      '<code>owner</code>, <code>repo</code>, and <code>pat</code> ' +
+      'Open <code>config.js</code> and set ' +
+      '<code>WORKER_CONFIG.baseUrl</code> to your deployed Cloudflare Worker URL ' +
       'before using the tracker.</div>';
     return;
   }
