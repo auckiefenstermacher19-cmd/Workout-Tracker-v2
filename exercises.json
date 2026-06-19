@@ -1,0 +1,36 @@
+{
+  "Legs": [
+    { "name": "Front Squat",           "defaultSets": 4 },
+    { "name": "Leg Press",             "defaultSets": 3 },
+    { "name": "Bulgarian Split Squat", "defaultSets": 3 },
+    { "name": "Leg Extension",         "defaultSets": 4 }
+  ],
+  "Chest": [
+    { "name": "Flat Bench",       "defaultSets": 4 },
+    { "name": "Incline Bench",    "defaultSets": 4 },
+    { "name": "Peck Flys",        "defaultSets": 3 },
+    { "name": "Tricep Pushdown",  "defaultSets": 3 }
+  ],
+  "Back": [
+    { "name": "BB Row",            "defaultSets": 4 },
+    { "name": "Weighted Pull Ups", "defaultSets": 4 },
+    { "name": "Cable Rows",        "defaultSets": 3 },
+    { "name": "Lat Pull Downs",    "defaultSets": 2 },
+    { "name": "Cable Curls",       "defaultSets": 3 }
+  ],
+  "Shoulders": [
+    { "name": "Shoulder Press",         "defaultSets": 4 },
+    { "name": "Lateral Raise SuperSet", "defaultSets": 3 },
+    { "name": "Rear Delts",             "defaultSets": 3 },
+    { "name": "BB Shrugs",              "defaultSets": 4 },
+    { "name": "Cable Lat Raises",       "defaultSets": 3 }
+  ],
+  "Arms": [
+    { "name": "BB Curl",             "defaultSets": 4 },
+    { "name": "Skull Crushers",      "defaultSets": 4 },
+    { "name": "Incline DB Curl",     "defaultSets": 3 },
+    { "name": "Tricep Pushdown",     "defaultSets": 4 },
+    { "name": "Hammer Curls",        "defaultSets": 3 },
+    { "name": "Overhead Cable Ext",  "defaultSets": 3 }
+  ]
+}

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Workout Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    #screen-home, #screen-session { display: none; }
+    #screen-home.active    { display: flex; flex-direction: column; min-height: 100dvh; }
+    #screen-session.active { display: grid; grid-template-rows: auto 1fr auto; min-height: 100dvh; }
+
+    .resume-banner {
+      margin: 0 var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      background: var(--accent-glow);
+      border: 1px solid var(--accent-dim);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+    }
+    .resume-banner-text {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    .resume-banner-text strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .resume-banner-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    .session-day-badge[data-day="Legs"]      { color: var(--day-legs); }
+    .session-day-badge[data-day="Chest"]     { color: var(--day-chest); }
+    .session-day-badge[data-day="Back"]      { color: var(--day-back); }
+    .session-day-badge[data-day="Shoulders"] { color: var(--day-shoulders); }
+    .session-day-badge[data-day="Arms"]      { color: var(--day-arms); }
+  </style>
+</head>
+<body>
+
+<div id="screen-home">
+
+  <div class="home-header">
+    <h1>Lift.</h1>
+    <p id="home-date-label"></p>
+  </div>
+
+  <div id="resume-banners"></div>
+
+  <div style="height: var(--space-4);"></div>
+
+  <div class="day-grid" id="day-grid">
+    <button class="day-btn" data-day="Legs">
+      <span class="day-dot"></span>
+      <span class="day-btn-label">Legs</span>
+      <span class="day-btn-arrow">&rsaquo;</span>
+    </button>
+    <button class="day-btn" data-day="Chest">
+      <span class="day-dot"></span>
+      <span class="day-btn-label">Chest</span>
+      <span class="day-btn-arrow">&rsaquo;</span>
+    </button>
+    <button class="day-btn" data-day="Back">
+      <span class="day-dot"></span>
+      <span class="day-btn-label">Back</span>
+      <span class="day-btn-arrow">&rsaquo;</span>
+    </button>
+    <button class="day-btn" data-day="Shoulders">
+      <span class="day-dot"></span>
+      <span class="day-btn-label">Shoulders</span>
+      <span class="day-btn-arrow">&rsaquo;</span>
+    </button>
+    <button class="day-btn" data-day="Arms">
+      <span class="day-dot"></span>
+      <span class="day-btn-label">Arms</span>
+      <span class="day-btn-arrow">&rsaquo;</span>
+    </button>
+  </div>
+
+  <div class="home-footer" style="display:flex; gap: var(--space-3); flex-wrap: wrap; justify-content:center;">
+    <a href="dashboard.html" class="btn btn-ghost">View Dashboard &rarr;</a>
+    <a href="records.html" class="btn btn-ghost">View Records &rarr;</a>
+  </div>
+
+</div>
+
+
+<div id="screen-session">
+
+  <div class="session-header">
+    <button class="btn btn-icon btn-secondary" id="btn-back-home" aria-label="Back to home">&larr;</button>
+    <div class="session-title" id="session-title">Back</div>
+    <span class="session-day-badge" id="session-day-badge" data-day=""></span>
+    <span class="save-status" id="save-status" data-state="idle">
+      <span class="save-status-dot"></span>
+      <span id="save-status-text">No changes</span>
+    </span>
+  </div>
+
+  <div class="exercise-list" id="exercise-list">
+  </div>
+
+  <div class="session-footer">
+    <span class="session-footer-label">Workout load</span>
+    <span class="session-footer-load" id="session-footer-load">0</span>
+  </div>
+
+</div>
+
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+'use strict';
+
+const state = {
+  currentDay:   null,
+  exercises:    [],
+  csvRows:      [],
+  csvLoaded:    false,
+  lastSession:  new Map()
+};
+
+let EXERCISES = null;
+let autosave  = null;
+
+function showScreen(id) {
+  ['screen-home', 'screen-session'].forEach(s => {
+    document.getElementById(s).classList.remove('active');
+  });
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!GITHUB_CONFIG.isConfigured) {
+    document.getElementById('screen-home').classList.add('active');
+    document.getElementById('day-grid').innerHTML =
+      '<div class="error-state" style="margin: var(--space-4);">' +
+      '<strong>config.js not configured.</strong><br><br>' +
+      'Open <code>config.js</code> and fill in your GitHub ' +
+      '<code>owner</code>, <code>repo</code>, and <code>pat</code> ' +
+      'before using the tracker.</div>';
+    return;
+  }
+
+  document.getElementById('home-date-label').textContent = formatDisplayDate(todayISO());
+  renderResumeBanners();
+  await loadExercises();
+
+  document.querySelectorAll('.day-btn').forEach(btn => {
+    btn.addEventListener('click', () => startSession(btn.dataset.day));
+  });
+
+  document.getElementById('btn-back-home').addEventListener('click', () => {
+    if (autosave) autosave.forceFlush();
+    showScreen('screen-home');
+    renderResumeBanners();
+  });
+
+  // Force a flush whenever the tab is backgrounded or the page is about
+  // to be hidden — this is the safety net for requirement #2: typing
+  // something and immediately switching apps must not lose data.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && autosave) {
+      autosave.forceFlush();
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    if (autosave) autosave.forceFlush();
+  });
+
+  showScreen('screen-home');
+});
+
+async function loadExercises() {
+  try {
+    const res = await fetch('exercises.json');
+    EXERCISES = await res.json();
+  } catch (e) {
+    showToast('Could not load exercises.json', 'error', 4000);
+    EXERCISES = {};
+  }
+}
+
+function renderResumeBanners() {
+  const container = document.getElementById('resume-banners');
+  const days = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+  const banners = [];
+
+  for (const day of days) {
+    if (hasLocalStorage(day)) banners.push(day);
+  }
+
+  if (banners.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = banners.map(day => (
+    '<div class="resume-banner">' +
+      '<div class="resume-banner-text"><strong>' + day + '</strong> has unsaved local changes</div>' +
+      '<div class="resume-banner-actions">' +
+        '<button class="btn btn-sm btn-ghost" onclick="startSession(\'' + day + '\', true)">Resume</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="discardSession(\'' + day + '\')">Discard</button>' +
+      '</div>' +
+    '</div><div style="height: var(--space-2);"></div>'
+  )).join('');
+}
+
+function discardSession(day) {
+  clearLocalStorage(day);
+  renderResumeBanners();
+  showToast(day + ' local draft discarded');
+}
+
+async function startSession(day, resume) {
+  state.currentDay = day;
+  state.exercises  = (EXERCISES && EXERCISES[day]) ? EXERCISES[day] : [];
+  state.csvLoaded  = false;
+
+  document.getElementById('session-title').textContent = day;
+  const badge = document.getElementById('session-day-badge');
+  badge.textContent = day;
+  badge.dataset.day = day;
+
+  setSaveStatus('idle', 'No changes');
+
+  showScreen('screen-session');
+
+  const savedData = loadFromLocalStorage(day);
+  buildExerciseList(state.exercises, resume && savedData ? savedData : null);
+
+  // Wire the autosave engine for this session
+  autosave = createAutosaveEngine({
+    debounceMs: 1500,
+    onStatusChange: handleAutosaveStatus,
+    getDate: () => todayISO(),
+    getWorkoutDay: () => state.currentDay,
+    getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list'))
+  });
+
+  loadHistoryAndStreaks(day);
+}
+
+function handleAutosaveStatus(status, detail) {
+  if (status === 'pending') {
+    setSaveStatus('pending', 'Typing…');
+  } else if (status === 'saving') {
+    setSaveStatus('saving', 'Saving…');
+  } else if (status === 'saved') {
+    setSaveStatus('saved', 'Saved');
+    renderResumeBanners();
+  } else if (status === 'error') {
+    setSaveStatus('error', 'Save failed');
+    showToast('Save failed: ' + (detail || 'unknown error'), 'error', 5000);
+  } else if (status === 'idle') {
+    setSaveStatus('idle', 'No changes');
+  }
+}
+
+function setSaveStatus(state_, text) {
+  const el = document.getElementById('save-status');
+  el.dataset.state = state_;
+  document.getElementById('save-status-text').textContent = text;
+}
+
+function buildExerciseList(exercises, savedData) {
+  const list = document.getElementById('exercise-list');
+  list.innerHTML = '';
+
+  for (const ex of exercises) {
+    const card = buildExerciseCard(ex, savedData);
+    list.appendChild(card);
+  }
+
+  recalcWorkoutLoad();
+}
+
+function buildExerciseCard(ex, savedData) {
+  const exerciseKey = state.currentDay + '|' + ex.name;
+  const isCollapsed = getCollapsedState(exerciseKey);
+
+  const card = document.createElement('div');
+  card.className = 'exercise-card exercise-block' + (isCollapsed ? ' collapsed' : '');
+  card.dataset.exercise = ex.name;
+
+  const header = document.createElement('button');
+  header.className = 'exercise-card-header';
+  header.type = 'button';
+  header.innerHTML =
+    '<span class="exercise-card-name">' + ex.name + '</span>' +
+    '<span class="exercise-card-chevron">&#9662;</span>';
+  header.addEventListener('click', () => {
+    card.classList.toggle('collapsed');
+    setCollapsedState(exerciseKey, card.classList.contains('collapsed'));
+  });
+  card.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'exercise-card-body';
+
+  const gridHeader = document.createElement('div');
+  gridHeader.className = 'set-grid-header';
+  gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today</span>';
+  body.appendChild(gridHeader);
+
+  const setsContainer = document.createElement('div');
+  setsContainer.className = 'sets-container';
+  body.appendChild(setsContainer);
+
+  // Determine initial row count
+  let savedSets = null;
+  if (savedData && savedData.exercises && savedData.exercises[ex.name]) {
+    savedSets = savedData.exercises[ex.name];
+  }
+  const initialCount = savedSets ? savedSets.length : ex.defaultSets;
+
+  for (let i = 0; i < initialCount; i++) {
+    const w = savedSets && savedSets[i] ? savedSets[i].weight : '';
+    const r = savedSets && savedSets[i] ? savedSets[i].reps   : '';
+    setsContainer.appendChild(createSetGridRow(i + 1, null, w, r));
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-set-btn';
+  addBtn.type = 'button';
+  addBtn.textContent = '+ Add set';
+  addBtn.addEventListener('click', () => {
+    const rows = setsContainer.querySelectorAll('.set-grid-row');
+    const newRow = createSetGridRow(rows.length + 1, null, '', '');
+    setsContainer.appendChild(newRow);
+    newRow.querySelector('.set-input-weight').focus();
+  });
+  body.appendChild(addBtn);
+
+  const loadRow = document.createElement('div');
+  loadRow.className = 'exercise-load-row';
+  loadRow.innerHTML = '<span>Exercise load</span><span class="load-num" data-role="exercise-load">0</span>';
+  body.appendChild(loadRow);
+
+  const streakNote = document.createElement('div');
+  streakNote.className = 'streak-note hidden';
+  streakNote.dataset.role = 'streak-note';
+  body.appendChild(streakNote);
+
+  card.appendChild(body);
+
+  return card;
+}
+
+function createSetGridRow(num, lastSetData, weightVal, repsVal) {
+  const row = document.createElement('div');
+  row.className = 'set-grid-row set-row';
+
+  const numEl = document.createElement('span');
+  numEl.className = 'set-grid-num';
+  numEl.textContent = num;
+  row.appendChild(numEl);
+
+  const lastCell = document.createElement('div');
+  if (lastSetData) {
+    lastCell.className = 'set-cell-last';
+    lastCell.textContent = formatWeight(lastSetData.weight) + '\u00d7' + lastSetData.reps;
+  } else {
+    lastCell.className = 'set-cell-last empty';
+    lastCell.textContent = '\u2013';
+  }
+  row.appendChild(lastCell);
+
+  const todayCell = document.createElement('div');
+  todayCell.className = 'set-cell-today' + (weightVal || repsVal ? '' : ' unfilled');
+
+  const weightInput = document.createElement('input');
+  weightInput.className = 'set-input set-input-weight';
+  weightInput.type = 'number';
+  weightInput.inputMode = 'decimal';
+  weightInput.placeholder = '0';
+  weightInput.value = weightVal || '';
+  weightInput.min = '0';
+  weightInput.step = '2.5';
+  weightInput.setAttribute('aria-label', 'Weight for set ' + num);
+
+  const sep = document.createElement('span');
+  sep.className = 'set-cell-sep';
+  sep.textContent = '\u00d7';
+
+  const repsInput = document.createElement('input');
+  repsInput.className = 'set-input set-input-reps';
+  repsInput.type = 'number';
+  repsInput.inputMode = 'numeric';
+  repsInput.placeholder = '0';
+  repsInput.value = repsVal || '';
+  repsInput.min = '0';
+  repsInput.step = '1';
+  repsInput.setAttribute('aria-label', 'Reps for set ' + num);
+
+  todayCell.appendChild(weightInput);
+  todayCell.appendChild(sep);
+  todayCell.appendChild(repsInput);
+  row.appendChild(todayCell);
+
+  // Remove control occupies its own grid cell (4th column).
+  // Row 1 gets an empty placeholder so the grid stays aligned.
+  if (num > 1) {
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'set-remove-row';
+    removeBtn.type = 'button';
+    removeBtn.setAttribute('aria-label', 'Remove set ' + num);
+    removeBtn.textContent = '\u00d7';
+    removeBtn.addEventListener('click', () => {
+      const container = row.parentElement;
+      row.remove();
+      renumberSetGrid(container);
+      handleInputChange();
+    });
+    row.appendChild(removeBtn);
+  } else {
+    const spacer = document.createElement('span');
+    row.appendChild(spacer);
+  }
+
+  // Hidden alias used by createSetGridRow callers / DOM contract with app.js
+  weightInput.classList.add('input-weight');
+  repsInput.classList.add('input-reps');
+
+  [weightInput, repsInput].forEach(inp => {
+    inp.addEventListener('input', () => {
+      todayCell.classList.toggle('unfilled', !weightInput.value && !repsInput.value);
+      handleInputChange();
+    });
+  });
+
+  return row;
+}
+
+function renumberSetGrid(container) {
+  const rows = container.querySelectorAll('.set-grid-row');
+
+  if (rows.length === 0) {
+    // Always keep at least one row — re-add a blank one
+    const newRow = createSetGridRow(1, null, '', '');
+    container.appendChild(newRow);
+    return;
+  }
+
+  rows.forEach((row, idx) => {
+    const num = idx + 1;
+    row.querySelector('.set-grid-num').textContent = num;
+
+    // Ensure the 4th cell matches: row 1 = spacer, others = remove button
+    const fourthCell = row.lastElementChild;
+    const isRemoveBtn = fourthCell && fourthCell.classList.contains('set-remove-row');
+
+    if (num === 1 && isRemoveBtn) {
+      const spacer = document.createElement('span');
+      fourthCell.replaceWith(spacer);
+    } else if (num > 1 && !isRemoveBtn) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'set-remove-row';
+      removeBtn.type = 'button';
+      removeBtn.textContent = '\u00d7';
+      removeBtn.setAttribute('aria-label', 'Remove set ' + num);
+      removeBtn.addEventListener('click', () => {
+        const c = row.parentElement;
+        row.remove();
+        renumberSetGrid(c);
+        handleInputChange();
+      });
+      fourthCell.replaceWith(removeBtn);
+    } else if (num > 1 && isRemoveBtn) {
+      fourthCell.setAttribute('aria-label', 'Remove set ' + num);
+    }
+  });
+}
+
+/* exercise-block and set-row alias classes are applied directly at
+   element creation time in buildExerciseCard()/createSetGridRow(),
+   so app.js's DOM queries against those class names work immediately
+   without any reactive patching step. */
+
+function handleInputChange() {
+  recalcWorkoutLoad();
+  updateExerciseLoadDisplays();
+
+  // Instant localStorage save (zero data loss even before GitHub commit)
+  const list = document.getElementById('exercise-list');
+  const data = serializeSessionForStorage(list, state.currentDay);
+  saveToLocalStorage(state.currentDay, data);
+
+  // Debounced GitHub commit
+  if (autosave) autosave.scheduleSave();
+}
+
+function recalcWorkoutLoad() {
+  const list = document.getElementById('exercise-list');
+  const exMap = buildExercisesMapFromDOM(list);
+  const total = calcWorkoutLoad(exMap);
+  document.getElementById('session-footer-load').textContent = formatLoad(total);
+}
+
+function updateExerciseLoadDisplays() {
+  document.querySelectorAll('.exercise-card').forEach(card => {
+    const name = card.dataset.exercise;
+    const setRows = card.querySelectorAll('.set-grid-row');
+    const sets = [];
+    setRows.forEach(row => {
+      const w = parseFloat(row.querySelector('.set-input-weight').value);
+      const r = parseInt(row.querySelector('.set-input-reps').value, 10);
+      if (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) sets.push({ weight: w, reps: r });
+    });
+    const load = calcExerciseLoad(sets);
+    const loadEl = card.querySelector('[data-role="exercise-load"]');
+    if (loadEl) loadEl.textContent = formatLoad(load);
+  });
+}
+
+/* ── Load history (last session) + streak notes, async ────────── */
+async function loadHistoryAndStreaks(day) {
+  try {
+    const raw = await getRawCSV();
+    state.csvRows = parseCSV(raw);
+    state.csvLoaded = true;
+
+    const today = todayISO();
+    state.lastSession = getLastSession(state.csvRows, day, today);
+
+    applyHistoryToCards(day, today);
+  } catch (e) {
+    showToast('History unavailable — check config.js', 'error', 4000);
+  }
+}
+
+function applyHistoryToCards(day, today) {
+  const list = document.getElementById('exercise-list');
+
+  for (const ex of state.exercises) {
+    const card = list.querySelector('.exercise-card[data-exercise="' + CSS.escape(ex.name) + '"]');
+    if (!card) continue;
+
+    const histData = state.lastSession.get(ex.name);
+    const histSets = histData ? histData.sets : [];
+
+    // Only auto-grow/shrink row count from history if the user hasn't
+    // already typed anything (a saved localStorage draft takes priority)
+    const alreadyHasDraft = !!loadFromLocalStorage(day);
+    const setsContainer = card.querySelector('.sets-container');
+    const addBtn = card.querySelector('.add-set-btn');
+
+    if (!alreadyHasDraft && histSets.length > 0) {
+      while (setsContainer.querySelectorAll('.set-grid-row').length < histSets.length) {
+        const n = setsContainer.querySelectorAll('.set-grid-row').length + 1;
+        const newRow = createSetGridRow(n, null, '', '');
+        setsContainer.appendChild(newRow);
+      }
+    }
+
+    // Now fill in the "last time" readout cells, set-number aligned
+    const rows = setsContainer.querySelectorAll('.set-grid-row');
+    rows.forEach((row, idx) => {
+      const lastCell = row.querySelector('.set-cell-last');
+      const hist = histSets[idx];
+      if (hist) {
+        lastCell.className = 'set-cell-last';
+        lastCell.textContent = formatWeight(hist.weight) + '\u00d7' + hist.reps;
+      } else {
+        lastCell.className = 'set-cell-last empty';
+        lastCell.textContent = '\u2013';
+      }
+    });
+
+    // Streak note
+    const streak = getConsecutiveStreak(state.csvRows, ex.name, day, today);
+    const streakEl = card.querySelector('[data-role="streak-note"]');
+    if (streak) {
+      streakEl.classList.remove('hidden');
+      streakEl.innerHTML =
+        '<span>' + formatWeight(streak.weight) + '\u00d7' + streak.reps +
+        ' on ' + ex.name + ' for the last ' + streak.count + ' sessions</span>';
+    } else {
+      streakEl.classList.add('hidden');
+      streakEl.innerHTML = '';
+    }
+  }
+
+  updateExerciseLoadDisplays();
+}
+</script>
+
+</body>
+</html>

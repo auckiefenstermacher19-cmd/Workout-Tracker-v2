@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Personal Records</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    #records-region {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .records-recalc-bar.recalculating {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .records-day-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
+    }
+    .records-day-heading {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: var(--space-2) 0;
+      color: var(--text-secondary);
+    }
+    .records-day-heading[data-day="Legs"]      { color: var(--day-legs); }
+    .records-day-heading[data-day="Chest"]     { color: var(--day-chest); }
+    .records-day-heading[data-day="Back"]      { color: var(--day-back); }
+    .records-day-heading[data-day="Shoulders"] { color: var(--day-shoulders); }
+    .records-day-heading[data-day="Arms"]      { color: var(--day-arms); }
+  </style>
+</head>
+<body>
+
+<div class="records-header">
+  <div class="records-header-title">Records</div>
+  <div class="records-header-actions">
+    <a href="dashboard.html" class="btn btn-secondary btn-sm">Dashboard</a>
+    <a href="index.html" class="btn btn-secondary btn-sm">Log Workout</a>
+  </div>
+</div>
+
+<div id="records-region">
+  <div class="detail-loading" style="padding: var(--space-12) var(--space-4);">
+    <div class="spinner"></div>
+    <span>Loading records…</span>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+'use strict';
+
+const recState = {
+  records: [],
+  loaded: false,
+  exercisesByDay: null  // populated from exercises.json
+};
+
+const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!GITHUB_CONFIG.isConfigured) {
+    document.getElementById('records-region').innerHTML =
+      '<div style="padding: var(--space-5) var(--space-4);">' +
+      '<div class="error-state"><strong>config.js not configured.</strong><br><br>' +
+      'Open <code>config.js</code> and fill in your GitHub ' +
+      '<code>owner</code>, <code>repo</code>, and <code>pat</code> ' +
+      'before using records.</div></div>';
+    return;
+  }
+
+  await loadExercisesConfig();
+  await loadRecords();
+});
+
+async function loadExercisesConfig() {
+  try {
+    const res = await fetch('exercises.json');
+    recState.exercisesByDay = await res.json();
+  } catch (e) {
+    // Non-fatal: fall back to flat alphabetical if exercises.json can't load
+    recState.exercisesByDay = null;
+  }
+}
+
+async function loadRecords() {
+  const region = document.getElementById('records-region');
+  region.innerHTML =
+    '<div class="detail-loading" style="padding: var(--space-12) var(--space-4);">' +
+    '<div class="spinner"></div><span>Loading records…</span></div>';
+
+  try {
+    const raw = await getRawRecords();
+    recState.records = parseRecordsCSV(raw);
+    recState.loaded = true;
+    renderRecords();
+  } catch (e) {
+    region.innerHTML =
+      '<div style="padding: var(--space-5) var(--space-4);">' +
+      '<div class="error-state">Could not load personal records.<br>' +
+      '<span style="font-size:0.8125rem; opacity:0.7;">' + e.message + '</span><br><br>' +
+      'Check that config.js has the correct owner, repo, and PAT, and that ' +
+      'personal_records.csv exists in the repo.</div></div>';
+  }
+}
+
+function renderRecords() {
+  const region = document.getElementById('records-region');
+
+  if (recState.records.length === 0) {
+    region.innerHTML =
+      '<div class="empty-state">No personal records logged yet. ' +
+      'Records populate automatically as you log workouts.</div>';
+    return;
+  }
+
+  // Group records by exercise name first
+  const byExercise = new Map();
+  for (const rec of recState.records) {
+    if (!byExercise.has(rec.exercise)) byExercise.set(rec.exercise, []);
+    byExercise.get(rec.exercise).push(rec);
+  }
+
+  let html = '<div class="records-body">';
+
+  html += '<div class="records-recalc-bar" id="recalc-bar">' +
+    '<span class="records-recalc-text">Records update automatically as you log sets. ' +
+    'Recalculate rebuilds everything from full workout history.</span>' +
+    '<button class="btn btn-sm btn-secondary" id="btn-recalc">Recalculate</button>' +
+    '</div>';
+
+  if (recState.exercisesByDay) {
+    // Day-grouped rendering, exercises in exercises.json order within each day
+    const renderedExercises = new Set();
+
+    for (const day of DAY_ORDER) {
+      const dayExercises = recState.exercisesByDay[day] || [];
+      // Only show this day section if at least one of its exercises has records
+      const hasAnyRecords = dayExercises.some(ex => byExercise.has(ex.name));
+      if (!hasAnyRecords) continue;
+
+      html += '<div class="records-day-section">';
+      html += '<div class="records-day-heading" data-day="' + day + '">' + day + '</div>';
+
+      for (const ex of dayExercises) {
+        if (!byExercise.has(ex.name)) continue;
+        html += renderExerciseRecordCard(ex.name, byExercise.get(ex.name));
+        renderedExercises.add(ex.name);
+      }
+
+      html += '</div>';
+    }
+
+    // Any exercise with records that isn't in exercises.json at all
+    // (e.g. logged under a name no longer in the exercise list) still
+    // needs to be shown somewhere rather than silently dropped.
+    const orphaned = [...byExercise.keys()]
+      .filter(name => !renderedExercises.has(name))
+      .sort((a, b) => a.localeCompare(b));
+
+    if (orphaned.length > 0) {
+      html += '<div class="records-day-section">';
+      html += '<div class="records-day-heading" data-day="">Other</div>';
+      for (const name of orphaned) {
+        html += renderExerciseRecordCard(name, byExercise.get(name));
+      }
+      html += '</div>';
+    }
+  } else {
+    // Fallback: flat alphabetical (exercises.json failed to load)
+    const exerciseOrder = [...byExercise.keys()].sort((a, b) => a.localeCompare(b));
+    for (const exerciseName of exerciseOrder) {
+      html += renderExerciseRecordCard(exerciseName, byExercise.get(exerciseName));
+    }
+  }
+
+  html += '</div>';
+
+  region.innerHTML = html;
+
+  document.getElementById('btn-recalc').addEventListener('click', handleRecalculate);
+}
+
+function renderExerciseRecordCard(exerciseName, recs) {
+  const sorted = recs.slice().sort((a, b) => a.repCount - b.repCount);
+
+  let html = '<div class="record-card">';
+  html += '<div class="record-card-header"><span class="record-card-name">' + exerciseName + '</span></div>';
+  html += '<div class="record-table">';
+  html += '<div class="record-row header-row"><span>Reps</span><span>Best weight</span><span>Date</span></div>';
+
+  for (const rec of sorted) {
+    const repLabel = rec.repCount === 1
+      ? '1 <span class="rep-suffix">rep</span>'
+      : rec.repCount + ' <span class="rep-suffix">rep</span>';
+    html += '<div class="record-row">' +
+      '<span class="record-rep-label">' + repLabel + '</span>' +
+      '<span class="record-weight">' + formatWeight(rec.weight) + ' lb</span>' +
+      '<span class="record-date">' + formatShortDate(rec.dateAchieved) + '</span>' +
+      '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function formatShortDate(isoString) {
+  if (!isoString) return '';
+  const parts = isoString.split('-').map(Number);
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+async function handleRecalculate() {
+  const bar = document.getElementById('recalc-bar');
+  const btn = document.getElementById('btn-recalc');
+  bar.classList.add('recalculating');
+  btn.textContent = 'Recalculating…';
+
+  try {
+    const newRecords = await rebuildAllRecordsFromHistory();
+    recState.records = newRecords;
+    renderRecords();
+    showToast('Records recalculated from full history', 'success');
+  } catch (e) {
+    bar.classList.remove('recalculating');
+    btn.textContent = 'Recalculate';
+    showToast('Recalculate failed: ' + e.message, 'error', 5000);
+  }
+}
+</script>
+
+</body>
+</html>

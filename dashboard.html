@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Workout Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Dashboard-specific styles ────────────────────────────── */
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      /* Use height not min-height so flex children can fill remaining space */
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* Sticky header + date nav block */
+    .dash-top {
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-base);
+    }
+
+    /* Day detail scroll region — fills all remaining height */
+    #detail-region {
+      flex: 1;
+      min-height: 0;          /* critical: lets flex child shrink below content size */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Loading/error state inside detail region */
+    .detail-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      padding: var(--space-12) var(--space-4);
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    /* Workout-day type color in detail header */
+    .day-detail-type[data-day="Legs"]      { color: var(--day-legs); }
+    .day-detail-type[data-day="Chest"]     { color: var(--day-chest); }
+    .day-detail-type[data-day="Back"]      { color: var(--day-back); }
+    .day-detail-type[data-day="Shoulders"] { color: var(--day-shoulders); }
+    .day-detail-type[data-day="Arms"]      { color: var(--day-arms); }
+
+    /* Calendar overlay tap-outside close zone */
+    .cal-overlay {
+      /* clicking the backdrop (outside the sheet) closes it */
+      cursor: default;
+    }
+    .cal-sheet {
+      cursor: default;
+    }
+
+    /* Today dot in date-nav label */
+    .date-nav-today-dot {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      background: var(--accent);
+      border-radius: 50%;
+      margin-left: var(--space-2);
+      vertical-align: middle;
+      margin-bottom: 1px;
+    }
+
+    /* Cal day number + dot stacked */
+    .cal-day-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      pointer-events: none;
+    }
+
+    .cal-day-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .cal-day.no-data .cal-day-dot  { display: none; }
+    .cal-day.empty   .cal-day-dot  { display: none; }
+    .cal-day.selected .cal-day-dot { background: rgba(255,255,255,0.6); }
+  </style>
+</head>
+<body>
+
+<!-- ── Sticky top block: header + date nav ─────────────────────── -->
+<div class="dash-top">
+
+  <!-- Header -->
+  <div class="dash-header">
+    <div class="dash-header-title">Dashboard</div>
+    <div style="display:flex; gap: var(--space-2);">
+      <a href="records.html" class="btn btn-secondary btn-sm">Records</a>
+      <a href="index.html" class="btn btn-secondary btn-sm">Log Workout</a>
+    </div>
+  </div>
+
+  <!-- Date navigation bar -->
+  <div class="date-nav">
+    <button class="date-nav-arrow" id="btn-prev-day" aria-label="Previous day">‹</button>
+    <button class="date-nav-label" id="btn-date-label" aria-label="Open calendar">
+      <!-- Populated by JS -->
+    </button>
+    <button class="date-nav-arrow" id="btn-next-day" aria-label="Next day">›</button>
+  </div>
+
+</div><!-- /dash-top -->
+
+
+<!-- ── Day detail region ────────────────────────────────────────── -->
+<div id="detail-region">
+  <div class="detail-loading">
+    <div class="spinner"></div>
+    <span>Loading workouts…</span>
+  </div>
+</div>
+
+
+<!-- ── Calendar popup (bottom sheet) ───────────────────────────── -->
+<div class="cal-overlay" id="cal-overlay" role="dialog" aria-modal="true" aria-label="Pick a date">
+
+  <div class="cal-sheet" id="cal-sheet">
+
+    <div class="cal-header">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" id="cal-prev-month" aria-label="Previous month">‹</button>
+        <button class="cal-nav-btn" id="cal-next-month" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-month-label" id="cal-month-label"></div>
+      <button class="cal-close" id="cal-close" aria-label="Close calendar">✕</button>
+    </div>
+
+    <!-- Weekday headers -->
+    <div class="cal-weekdays">
+      <div class="cal-weekday">Su</div>
+      <div class="cal-weekday">Mo</div>
+      <div class="cal-weekday">Tu</div>
+      <div class="cal-weekday">We</div>
+      <div class="cal-weekday">Th</div>
+      <div class="cal-weekday">Fr</div>
+      <div class="cal-weekday">Sa</div>
+    </div>
+
+    <!-- Date grid — populated by JS -->
+    <div class="cal-grid" id="cal-grid"></div>
+
+  </div><!-- /cal-sheet -->
+
+</div><!-- /cal-overlay -->
+
+
+<!-- Scripts -->
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   dashboard.html — Page controller
+   ═══════════════════════════════════════════════════════════════ */
+
+'use strict';
+
+/* ── State ────────────────────────────────────────────────────── */
+const dash = {
+  currentDate:  todayISO(),    // "YYYY-MM-DD" — the date being viewed
+  calYear:      0,             // calendar popup month currently shown
+  calMonth:     0,             // 1-indexed
+  rows:         [],            // full parsed CSV
+  datesWithData: new Set(),    // Set<string> of dates that have rows
+  loaded:       false
+};
+
+/* ── Boot ─────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+  // Guard: show clear error if config.js has not been filled in
+  if (!GITHUB_CONFIG.isConfigured) {
+    document.getElementById('detail-region').innerHTML = `
+      <div style="padding: var(--space-5) var(--space-4);">
+        <div class="error-state">
+          <strong>config.js not configured.</strong><br><br>
+          Open <code>config.js</code> and fill in your GitHub
+          <code>owner</code>, <code>repo</code>, and <code>pat</code>
+          before using the dashboard.
+        </div>
+      </div>`;
+    updateDateNav();
+    return;
+  }
+
+  // Wire date nav
+  document.getElementById('btn-prev-day').addEventListener('click', () => navigateDay(-1));
+  document.getElementById('btn-next-day').addEventListener('click', () => navigateDay(+1));
+  document.getElementById('btn-date-label').addEventListener('click', openCalendar);
+
+  // Wire calendar controls
+  document.getElementById('cal-close').addEventListener('click', closeCalendar);
+  document.getElementById('cal-prev-month').addEventListener('click', () => shiftCalMonth(-1));
+  document.getElementById('cal-next-month').addEventListener('click', () => shiftCalMonth(+1));
+
+  // Close calendar by tapping the overlay backdrop (not the sheet)
+  document.getElementById('cal-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('cal-overlay')) closeCalendar();
+  });
+
+  // Keyboard: Escape closes calendar, arrow keys navigate days
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCalendar();
+    if (!document.getElementById('cal-overlay').classList.contains('open')) {
+      if (e.key === 'ArrowLeft')  navigateDay(-1);
+      if (e.key === 'ArrowRight') navigateDay(+1);
+    }
+  });
+
+  // Render date nav immediately with today (before CSV loads)
+  updateDateNav();
+
+  // Load CSV data
+  await loadData();
+});
+
+/* ── Load CSV ─────────────────────────────────────────────────── */
+async function loadData() {
+  setDetailLoading(true);
+
+  try {
+    const raw         = await getRawCSV();
+    dash.rows         = parseCSV(raw);
+    dash.datesWithData = getDatesWithData(dash.rows);
+    dash.loaded       = true;
+    renderDetail();
+  } catch (e) {
+    setDetailError(e.message);
+  }
+}
+
+/* ── Date navigation ──────────────────────────────────────────── */
+function navigateDay(delta) {
+  dash.currentDate = stepDate(dash.currentDate, delta);
+  updateDateNav();
+  if (dash.loaded) renderDetail();
+}
+
+function navigateTo(isoDate) {
+  dash.currentDate = isoDate;
+  updateDateNav();
+  if (dash.loaded) renderDetail();
+}
+
+/* ── Update the date nav bar label ───────────────────────────── */
+function updateDateNav() {
+  const label = document.getElementById('btn-date-label');
+  const today = todayISO();
+  const isToday = dash.currentDate === today;
+
+  // Parse date parts to avoid timezone issues
+  const [y, m, d] = dash.currentDate.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const formatted = dateObj.toLocaleDateString('en-US', {
+    month: 'long',
+    day:   'numeric',
+    year:  'numeric'
+  });
+
+  label.innerHTML = isToday
+    ? `${formatted}<span class="date-nav-today-dot" title="Today"></span>`
+    : formatted;
+}
+
+/* ── Detail region states ─────────────────────────────────────── */
+function setDetailLoading(on) {
+  if (on) {
+    document.getElementById('detail-region').innerHTML = `
+      <div class="detail-loading">
+        <div class="spinner"></div>
+        <span>Loading workouts…</span>
+      </div>`;
+  }
+}
+
+function setDetailError(msg) {
+  document.getElementById('detail-region').innerHTML = `
+    <div style="padding: var(--space-5) var(--space-4);">
+      <div class="error-state">
+        Could not load workout data.<br>
+        <span style="font-size:0.8125rem; opacity:0.7;">${msg}</span><br><br>
+        Check that config.js has the correct owner, repo, and PAT.
+      </div>
+    </div>`;
+}
+
+/* ── Render day detail ────────────────────────────────────────── */
+function renderDetail() {
+  const region = document.getElementById('detail-region');
+
+  // Use the shared renderer from app.js
+  renderDayDetail(region, dash.rows, dash.currentDate);
+
+  // After renderDayDetail writes innerHTML, colour-code the workout type header
+  const typeEl = region.querySelector('.day-detail-type');
+  if (typeEl) {
+    // Extract the day name (strip " Day" suffix added by renderer)
+    const dayName = typeEl.textContent.replace(' Day', '').trim();
+    typeEl.dataset.day = dayName;
+  }
+}
+
+/* ── Calendar open/close ──────────────────────────────────────── */
+function openCalendar() {
+  const [y, m] = dash.currentDate.split('-').map(Number);
+  dash.calYear  = y;
+  dash.calMonth = m;
+
+  renderCalendar();
+  document.getElementById('cal-overlay').classList.add('open');
+  // Trap focus inside sheet for a11y
+  document.getElementById('cal-close').focus();
+}
+
+function closeCalendar() {
+  document.getElementById('cal-overlay').classList.remove('open');
+  // Return focus to date label
+  document.getElementById('btn-date-label').focus();
+}
+
+/* ── Calendar month navigation ────────────────────────────────── */
+function shiftCalMonth(delta) {
+  dash.calMonth += delta;
+  if (dash.calMonth > 12) { dash.calMonth = 1;  dash.calYear++; }
+  if (dash.calMonth < 1)  { dash.calMonth = 12; dash.calYear--; }
+  renderCalendar();
+}
+
+/* ── Render calendar grid ─────────────────────────────────────── */
+function renderCalendar() {
+  const { calYear, calMonth } = dash;
+
+  // Update month/year label
+  const labelDate = new Date(calYear, calMonth - 1, 1);
+  document.getElementById('cal-month-label').textContent =
+    labelDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const cells   = getCalendarMonth(calYear, calMonth);
+  const today   = todayISO();
+  const grid    = document.getElementById('cal-grid');
+
+  grid.innerHTML = '';
+
+  for (const cell of cells) {
+    const btn = document.createElement('button');
+    btn.className = 'cal-day';
+    btn.type = 'button';
+
+    if (cell.empty) {
+      // Empty leading/trailing slot
+      btn.classList.add('empty');
+      btn.setAttribute('aria-hidden', 'true');
+      btn.disabled = true;
+      btn.innerHTML = `<span class="cal-day-inner"></span>`;
+    } else {
+      const iso      = cell.iso;
+      const hasData  = dash.datesWithData.has(iso);
+      const isToday  = iso === today;
+      const isSelected = iso === dash.currentDate;
+
+      if (isToday)    btn.classList.add('today');
+      if (isSelected) btn.classList.add('selected');
+
+      if (hasData) {
+        btn.classList.add('has-data');
+        btn.setAttribute('aria-label', `${formatDisplayDate(iso)}, workout logged`);
+      } else {
+        btn.classList.add('no-data');
+        btn.setAttribute('aria-label', `${formatDisplayDate(iso)}, no workout`);
+        btn.disabled = true;
+      }
+
+      // Inner: number + optional dot
+      btn.innerHTML = `
+        <span class="cal-day-inner">
+          <span>${cell.day}</span>
+          ${hasData ? '<span class="cal-day-dot"></span>' : ''}
+        </span>`;
+
+      if (hasData) {
+        btn.addEventListener('click', () => {
+          closeCalendar();
+          navigateTo(iso);
+        });
+      }
+    }
+
+    grid.appendChild(btn);
+  }
+}
+</script>
+
+</body>
+</html>
