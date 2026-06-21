@@ -823,11 +823,63 @@ function createAutosaveEngine(opts) {
 
   function forceFlush() {
     if (debounceTimer) {
-      flush();
+      return flush();
+    }
+    return Promise.resolve();
+  }
+
+  /**
+   * completeFlush()
+   * Always performs a final flush, regardless of whether a debounce
+   * timer is currently pending -- used by the "Complete Workout"
+   * button, which needs a guaranteed final save attempt before
+   * clearing localStorage and navigating away, not just "flush if
+   * something happens to be pending."
+   *
+   * Returns { ok: true } on success or { ok: false, message } on
+   * failure, so the caller can decide whether it's safe to proceed.
+   */
+  async function completeFlush() {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+
+    // If a save is already in-flight, wait for it rather than
+    // starting a second overlapping write.
+    if (isSaving) {
+      pendingResave = false; // we're about to do our own explicit flush below
+      while (isSaving) {
+        await new Promise(r => setTimeout(r, 50));
+      }
+    }
+
+    const exMap = getExercisesMap();
+    let hasAnyValidSet = false;
+    for (const entry of exMap) {
+      if (entry[1].length > 0) { hasAnyValidSet = true; break; }
+    }
+    if (!hasAnyValidSet) {
+      // Nothing to save is not an error -- an empty/unstarted
+      // session can still be "completed" (e.g. a rest day check-in).
+      onStatusChange('idle');
+      return { ok: true, empty: true };
+    }
+
+    isSaving = true;
+    onStatusChange('saving');
+
+    try {
+      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap);
+      onStatusChange('saved');
+      return { ok: true };
+    } catch (e) {
+      onStatusChange('error', e.message);
+      return { ok: false, message: e.message };
+    } finally {
+      isSaving = false;
     }
   }
 
-  return { scheduleSave: scheduleSave, flush: flush, forceFlush: forceFlush };
+  return { scheduleSave: scheduleSave, flush: flush, forceFlush: forceFlush, completeFlush: completeFlush };
 }
 
 async function commitTodaysWorkout(date, workoutDay, exercisesMap) {
