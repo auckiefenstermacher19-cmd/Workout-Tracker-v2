@@ -1,7 +1,7 @@
 {
   "Legs": [
     {
-      "name": "Front Squat",
+      "name": "BB Squat",
       "defaultSets": 4
     },
     {
@@ -17,7 +17,7 @@
       "defaultSets": 4
     },
     {
-      "name": "BB Squat",
+      "name": "Front Squat",
       "defaultSets": 4
     }
   ],
