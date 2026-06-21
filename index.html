@@ -112,8 +112,11 @@
   </div>
 
   <div class="session-footer">
-    <span class="session-footer-label">Workout load</span>
-    <span class="session-footer-load" id="session-footer-load">0</span>
+    <div class="session-footer-load-row">
+      <span class="session-footer-label">Workout load</span>
+      <span class="session-footer-load" id="session-footer-load">0</span>
+    </div>
+    <button class="btn btn-primary btn-full" id="btn-complete-workout">Complete Workout</button>
   </div>
 
 </div>
@@ -168,6 +171,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     showScreen('screen-home');
     renderResumeBanners();
   });
+
+  document.getElementById('btn-complete-workout').addEventListener('click', handleCompleteWorkout);
 
   // Force a flush whenever the tab is backgrounded or the page is about
   // to be hidden — this is the safety net for requirement #2: typing
@@ -274,6 +279,47 @@ function setSaveStatus(state_, text) {
   const el = document.getElementById('save-status');
   el.dataset.state = state_;
   document.getElementById('save-status-text').textContent = text;
+}
+
+/**
+ * handleCompleteWorkout()
+ * Forces a guaranteed final save (regardless of debounce timing),
+ * and only on confirmed success clears the localStorage draft for
+ * this day and navigates back to the home screen. This is what
+ * makes the home screen's resume banner stop showing "X has
+ * unsaved local changes" for a day once it's genuinely complete --
+ * the banner is driven purely by hasLocalStorage(day), so clearing
+ * it here is what marks the day done.
+ *
+ * If the final save fails, localStorage is deliberately left
+ * intact and the user is kept on the session screen -- their data
+ * is still safe locally and the resume banner will correctly
+ * continue to flag it as unsaved.
+ */
+async function handleCompleteWorkout() {
+  const btn = document.getElementById('btn-complete-workout');
+  if (!autosave) {
+    showToast('Nothing to complete yet', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Saving…';
+
+  const result = await autosave.completeFlush();
+
+  btn.disabled = false;
+  btn.textContent = originalText;
+
+  if (result.ok) {
+    clearLocalStorage(state.currentDay);
+    showToast(state.currentDay + ' workout completed', 'success');
+    showScreen('screen-home');
+    renderResumeBanners();
+  } else {
+    showToast('Could not complete workout: ' + (result.message || 'save failed'), 'error', 5000);
+  }
 }
 
 function buildExerciseList(exercises, savedData) {
