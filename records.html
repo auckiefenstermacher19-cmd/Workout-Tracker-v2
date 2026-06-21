@@ -95,8 +95,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadExercisesConfig() {
   try {
-    const res = await fetch('exercises.json');
-    recState.exercisesByDay = await res.json();
+    const raw = await getRawExercises();
+    recState.exercisesByDay = JSON.parse(raw);
   } catch (e) {
     // Non-fatal: fall back to flat alphabetical if exercises.json can't load
     recState.exercisesByDay = null;
