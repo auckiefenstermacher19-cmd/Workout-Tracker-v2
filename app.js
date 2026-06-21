@@ -78,6 +78,93 @@ async function replaceRecordsContent(fullCSVText, commitMessage) {
 }
 
 /**
+ * getExercisesFile()
+ * Returns { content, sha } for exercises.json, authenticated via the Worker.
+ */
+async function getExercisesFile() {
+  const res = await fetch(WORKER_CONFIG.baseUrl + '/exercises');
+  const json = await res.json();
+
+  if (!res.ok) {
+    throw new Error('Worker read failed ' + res.status + ': ' + (json.message || json.error || res.statusText));
+  }
+
+  return { content: json.content, sha: json.sha };
+}
+
+/**
+ * getRawExercises()
+ * Returns the raw exercises.json text via the Worker's unauthenticated
+ * passthrough endpoint, cache-busted.
+ */
+async function getRawExercises() {
+  const url = WORKER_CONFIG.baseUrl + '/raw/exercises?t=' + Date.now();
+  const res = await fetch(url, { cache: 'no-store' });
+
+  if (!res.ok) {
+    throw new Error('Raw exercises fetch failed ' + res.status + ': ' + res.statusText);
+  }
+
+  return res.text();
+}
+
+/**
+ * replaceExercisesContent(exercisesObj, commitMessage)
+ * Writes the full exercises.json object back to GitHub via the Worker.
+ * Always reads the current sha first to avoid stale-write conflicts.
+ */
+async function replaceExercisesContent(exercisesObj, commitMessage) {
+  const { sha } = await getExercisesFile();
+  const content = JSON.stringify(exercisesObj, null, 2) + '\n';
+
+  return putToWorker('/exercises', content, sha, commitMessage || 'Update exercise library');
+}
+
+/**
+ * addExerciseToLibrary(day, exerciseName, defaultSets)
+ * Convenience wrapper: reads the current library, validates the new
+ * exercise doesn't already exist under that day, appends it, and
+ * writes the result back. Throws if the name is a duplicate within
+ * that day (case-insensitive) or if inputs are invalid.
+ *
+ * Returns the updated exercises object.
+ */
+async function addExerciseToLibrary(day, exerciseName, defaultSets) {
+  const name = (exerciseName || '').trim();
+  const sets = parseInt(defaultSets, 10);
+
+  if (!name) {
+    throw new Error('Exercise name is required');
+  }
+  if (!day) {
+    throw new Error('Workout day is required');
+  }
+  if (isNaN(sets) || sets < 1) {
+    throw new Error('Default set count must be a positive number');
+  }
+
+  const { content } = await getExercisesFile();
+  const exercisesObj = JSON.parse(content);
+
+  if (!exercisesObj[day]) {
+    exercisesObj[day] = [];
+  }
+
+  const isDuplicate = exercisesObj[day].some(
+    ex => ex.name.toLowerCase() === name.toLowerCase()
+  );
+  if (isDuplicate) {
+    throw new Error('"' + name + '" already exists under ' + day);
+  }
+
+  exercisesObj[day].push({ name: name, defaultSets: sets });
+
+  await replaceExercisesContent(exercisesObj, 'Add exercise: ' + name + ' (' + day + ')');
+
+  return exercisesObj;
+}
+
+/**
  * putToWorker(path, content, sha, message)
  * Shared PUT helper -- sends plain-text content (not base64; the
  * Worker handles base64 encoding server-side) along with the
