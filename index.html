@@ -186,10 +186,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadExercises() {
   try {
-    const res = await fetch('exercises.json');
-    EXERCISES = await res.json();
+    const raw = await getRawExercises();
+    EXERCISES = JSON.parse(raw);
   } catch (e) {
-    showToast('Could not load exercises.json', 'error', 4000);
+    showToast('Could not load exercise library', 'error', 4000);
     EXERCISES = {};
   }
 }
