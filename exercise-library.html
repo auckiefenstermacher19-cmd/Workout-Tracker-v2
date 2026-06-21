@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Exercise Library</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    #library-region {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .lib-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-base);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: var(--space-3) var(--space-4);
+      padding-top: max(var(--space-3), env(safe-area-inset-top));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-2);
+      min-height: var(--tap-min);
+    }
+
+    .lib-header-title {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .lib-header-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    .lib-body {
+      padding: var(--space-5) var(--space-4) var(--space-10);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-5);
+    }
+
+    /* Add-exercise form card */
+    .add-exercise-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .add-exercise-card h2 {
+      font-size: 1rem;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .form-field label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .form-row {
+      display: flex;
+      gap: var(--space-3);
+    }
+
+    .form-row .form-field {
+      flex: 1;
+    }
+
+    select.input {
+      cursor: pointer;
+    }
+
+    /* Day-grouped exercise list, mirrors records.html styling */
+    .lib-day-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .lib-day-heading {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: var(--space-2) 0;
+      color: var(--text-secondary);
+    }
+    .lib-day-heading[data-day="Legs"]      { color: var(--day-legs); }
+    .lib-day-heading[data-day="Chest"]     { color: var(--day-chest); }
+    .lib-day-heading[data-day="Back"]      { color: var(--day-back); }
+    .lib-day-heading[data-day="Shoulders"] { color: var(--day-shoulders); }
+    .lib-day-heading[data-day="Arms"]      { color: var(--day-arms); }
+
+    .lib-exercise-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-3);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+
+    .lib-exercise-name {
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    .lib-exercise-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="lib-header">
+  <div class="lib-header-title">Exercise Library</div>
+  <div class="lib-header-actions">
+    <a href="records.html" class="btn btn-secondary btn-sm">Records</a>
+    <a href="dashboard.html" class="btn btn-secondary btn-sm">Dashboard</a>
+    <a href="index.html" class="btn btn-secondary btn-sm">Log Workout</a>
+  </div>
+</div>
+
+<div id="library-region">
+  <div class="detail-loading" style="padding: var(--space-12) var(--space-4);">
+    <div class="spinner"></div>
+    <span>Loading exercise library…</span>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+'use strict';
+
+const libState = {
+  exercises: null,
+  loaded: false
+};
+
+const LIB_DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!WORKER_CONFIG.isConfigured) {
+    document.getElementById('library-region').innerHTML =
+      '<div style="padding: var(--space-5) var(--space-4);">' +
+      '<div class="error-state"><strong>config.js not configured.</strong><br><br>' +
+      'Open <code>config.js</code> and set ' +
+      '<code>WORKER_CONFIG.baseUrl</code> to your deployed Cloudflare Worker URL ' +
+      'before using the exercise library.</div></div>';
+    return;
+  }
+
+  await loadLibrary();
+});
+
+async function loadLibrary() {
+  const region = document.getElementById('library-region');
+  region.innerHTML =
+    '<div class="detail-loading" style="padding: var(--space-12) var(--space-4);">' +
+    '<div class="spinner"></div><span>Loading exercise library…</span></div>';
+
+  try {
+    const raw = await getRawExercises();
+    libState.exercises = JSON.parse(raw);
+    libState.loaded = true;
+    renderLibrary();
+  } catch (e) {
+    region.innerHTML =
+      '<div style="padding: var(--space-5) var(--space-4);">' +
+      '<div class="error-state">Could not load exercise library.<br>' +
+      '<span style="font-size:0.8125rem; opacity:0.7;">' + e.message + '</span></div></div>';
+  }
+}
+
+function renderLibrary() {
+  const region = document.getElementById('library-region');
+
+  let html = '<div class="lib-body">';
+
+  // Add-exercise form
+  html += '<div class="add-exercise-card">';
+  html += '<h2>Add an exercise</h2>';
+  html += '<div class="form-field"><label for="new-ex-name">Exercise name</label>' +
+    '<input class="input" id="new-ex-name" type="text" placeholder="e.g. Cable Crossover" maxlength="60" /></div>';
+  html += '<div class="form-row">';
+  html += '<div class="form-field"><label for="new-ex-day">Workout day</label>' +
+    '<select class="input" id="new-ex-day">' +
+    LIB_DAY_ORDER.map(d => '<option value="' + d + '">' + d + '</option>').join('') +
+    '</select></div>';
+  html += '<div class="form-field"><label for="new-ex-sets">Default sets</label>' +
+    '<input class="input" id="new-ex-sets" type="number" inputmode="numeric" min="1" max="10" value="3" /></div>';
+  html += '</div>';
+  html += '<button class="btn btn-primary btn-full" id="btn-add-exercise">Add to library</button>';
+  html += '<span class="save-status" id="add-ex-status" data-state="idle" style="align-self:center;">' +
+    '<span class="save-status-dot"></span><span id="add-ex-status-text"></span></span>';
+  html += '</div>';
+
+  // Day-grouped current library listing
+  for (const day of LIB_DAY_ORDER) {
+    const dayExercises = (libState.exercises && libState.exercises[day]) || [];
+    if (dayExercises.length === 0) continue;
+
+    html += '<div class="lib-day-section">';
+    html += '<div class="lib-day-heading" data-day="' + day + '">' + day + '</div>';
+
+    for (const ex of dayExercises) {
+      html += '<div class="lib-exercise-row">' +
+        '<div><div class="lib-exercise-name">' + escapeHtml(ex.name) + '</div>' +
+        '<div class="lib-exercise-meta">' + ex.defaultSets + ' sets by default</div></div>' +
+        '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  html += '</div>';
+
+  region.innerHTML = html;
+
+  document.getElementById('btn-add-exercise').addEventListener('click', handleAddExercise);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function handleAddExercise() {
+  const nameInput = document.getElementById('new-ex-name');
+  const daySelect = document.getElementById('new-ex-day');
+  const setsInput = document.getElementById('new-ex-sets');
+  const btn = document.getElementById('btn-add-exercise');
+  const statusEl = document.getElementById('add-ex-status');
+  const statusText = document.getElementById('add-ex-status-text');
+
+  const name = nameInput.value.trim();
+  const day = daySelect.value;
+  const sets = parseInt(setsInput.value, 10);
+
+  if (!name) {
+    showToast('Enter an exercise name', 'error');
+    nameInput.focus();
+    return;
+  }
+  if (isNaN(sets) || sets < 1) {
+    showToast('Default sets must be at least 1', 'error');
+    setsInput.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.dataset.state = 'saving';
+  statusText.textContent = 'Saving…';
+
+  try {
+    const updated = await addExerciseToLibrary(day, name, sets);
+    libState.exercises = updated;
+    statusEl.dataset.state = 'saved';
+    statusText.textContent = 'Saved';
+    showToast('"' + name + '" added to ' + day, 'success');
+
+    nameInput.value = '';
+    setsInput.value = '3';
+
+    renderLibrary();
+  } catch (e) {
+    statusEl.dataset.state = 'error';
+    statusText.textContent = 'Failed';
+    showToast(e.message, 'error', 4000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
