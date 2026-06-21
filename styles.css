@@ -611,12 +611,29 @@ p, li {
   justify-content: space-between;
   width: 100%;
   min-height: var(--tap-min);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  gap: var(--space-2);
+}
+
+.exercise-card-header-toggle {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap-min);
   background: transparent;
   border: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   text-align: left;
+  padding: 0;
+}
+
+.exercise-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .exercise-card-name {
@@ -624,6 +641,9 @@ p, li {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .exercise-card-chevron {
@@ -638,9 +658,72 @@ p, li {
   transform: rotate(-90deg);
 }
 
+/* Swap dropdown in the card header */
+.exercise-swap-select {
+  height: 32px;
+  max-width: 92px;
+  padding: 0 var(--space-2);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.exercise-swap-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Remove-card button in the card header */
+.exercise-card-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.0625rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .exercise-card-remove:hover {
+    color: var(--color-error);
+    background: rgba(240, 128, 128, 0.1);
+  }
+}
+
 .exercise-card-body {
   border-top: 1px solid var(--border-subtle);
   padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+/* Bottom "add exercise to today" control */
+.add-exercise-to-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+.add-exercise-to-today .exercise-swap-select.add-exercise-select {
+  width: 100%;
+  max-width: none;
+  height: var(--tap-min);
+  font-size: 0.875rem;
 }
 
 .exercise-card.collapsed .exercise-card-body {
