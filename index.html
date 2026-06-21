@@ -90,6 +90,7 @@
   <div class="home-footer" style="display:flex; gap: var(--space-3); flex-wrap: wrap; justify-content:center;">
     <a href="dashboard.html" class="btn btn-ghost">View Dashboard &rarr;</a>
     <a href="records.html" class="btn btn-ghost">View Records &rarr;</a>
+    <a href="exercise-library.html" class="btn btn-ghost">Exercise Library &rarr;</a>
   </div>
 
 </div>
@@ -284,7 +285,253 @@ function buildExerciseList(exercises, savedData) {
     list.appendChild(card);
   }
 
+  appendAddExerciseControl(list);
+
   recalcWorkoutLoad();
+}
+
+/**
+ * appendAddExerciseControl(list)
+ * Adds a row at the bottom of the exercise list letting the user
+ * add an exercise to TODAY'S session only -- this never touches
+ * exercises.json. The picker is scoped to exercises already
+ * assigned to the current day in the library, minus any already
+ * present in today's session.
+ */
+function appendAddExerciseControl(list) {
+  const wrap = document.createElement('div');
+  wrap.className = 'add-exercise-to-today';
+  wrap.dataset.role = 'add-exercise-control';
+
+  const select = document.createElement('select');
+  select.className = 'exercise-swap-select add-exercise-select';
+  select.setAttribute('aria-label', 'Add an exercise to today');
+  populateAddExerciseOptions(select);
+
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-secondary btn-sm';
+  btn.type = 'button';
+  btn.textContent = '+ Add exercise to today';
+  btn.addEventListener('click', () => {
+    const chosenName = select.value;
+    if (!chosenName) {
+      showToast('No more exercises available to add for ' + state.currentDay, 'error');
+      return;
+    }
+    addExerciseCardToToday(chosenName);
+  });
+
+  wrap.appendChild(select);
+  wrap.appendChild(btn);
+  list.appendChild(wrap);
+}
+
+/**
+ * getDayExerciseDefs()
+ * Returns the array of {name, defaultSets} objects for the current
+ * day from the loaded exercises.json, or [] if unavailable.
+ */
+function getDayExerciseDefs() {
+  return (EXERCISES && EXERCISES[state.currentDay]) ? EXERCISES[state.currentDay] : [];
+}
+
+/**
+ * getNamesCurrentlyInSession()
+ * Returns a Set of exercise names currently shown as cards in the
+ * session (i.e. what's actually in the DOM right now, which may
+ * differ from the library defaults after swaps/adds/removes).
+ */
+function getNamesCurrentlyInSession() {
+  const cards = document.querySelectorAll('#exercise-list .exercise-card');
+  return new Set(Array.from(cards).map(c => c.dataset.exercise));
+}
+
+/**
+ * populateSwapOptions(selectEl, currentName)
+ * Fills a swap <select> with every exercise assigned to the
+ * current day except the one currently shown on this card.
+ */
+function populateSwapOptions(selectEl, currentName) {
+  const dayDefs = getDayExerciseDefs();
+
+  selectEl.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Swap \u2193';
+  selectEl.appendChild(placeholder);
+
+  for (const def of dayDefs) {
+    if (def.name === currentName) continue;
+    const opt = document.createElement('option');
+    opt.value = def.name;
+    opt.textContent = def.name;
+    selectEl.appendChild(opt);
+  }
+}
+
+/**
+ * populateAddExerciseOptions(selectEl)
+ * Fills the bottom "add exercise" <select> with day-scoped
+ * exercises that are NOT already present as a card in today's
+ * session.
+ */
+function populateAddExerciseOptions(selectEl) {
+  const dayDefs = getDayExerciseDefs();
+  const inSession = getNamesCurrentlyInSession();
+
+  selectEl.innerHTML = '';
+
+  const available = dayDefs.filter(def => !inSession.has(def.name));
+
+  if (available.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'All exercises already added';
+    selectEl.appendChild(opt);
+    return;
+  }
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Choose an exercise\u2026';
+  selectEl.appendChild(placeholder);
+
+  for (const def of available) {
+    const opt = document.createElement('option');
+    opt.value = def.name;
+    opt.textContent = def.name;
+    selectEl.appendChild(opt);
+  }
+}
+
+/**
+ * handleSwapExercise(card, newName)
+ * Replaces the exercise shown on an existing card with a different
+ * one from the same day's library. Clears any typed Today values
+ * on that card (they belonged to the old exercise and would be
+ * meaningless attached to the new one), resets to the new
+ * exercise's default set count, refreshes history/streak data for
+ * the new name, and re-saves to localStorage / triggers autosave.
+ */
+function handleSwapExercise(card, newName) {
+  if (!newName) return;
+
+  const dayDefs = getDayExerciseDefs();
+  const def = dayDefs.find(d => d.name === newName);
+  if (!def) return;
+
+  const oldName = card.dataset.exercise;
+  if (newName === oldName) return;
+
+  // Guard against swapping to an exercise already present elsewhere
+  // in today's session -- would create two cards for the same
+  // exercise, which breaks the 1:1 DOM-to-exercise assumption the
+  // rest of the app relies on.
+  const inSession = getNamesCurrentlyInSession();
+  if (inSession.has(newName)) {
+    showToast('"' + newName + '" is already in today\u2019s session', 'error');
+    populateSwapOptions(card.querySelector('[data-role="swap-select"]'), oldName);
+    return;
+  }
+
+  card.dataset.exercise = newName;
+  card.querySelector('[data-role="exercise-name"]').textContent = newName;
+
+  // Rebuild the set rows fresh at the new exercise's default count --
+  // old typed values were for a different exercise and don't carry over.
+  const setsContainer = card.querySelector('.sets-container');
+  setsContainer.innerHTML = '';
+  for (let i = 0; i < def.defaultSets; i++) {
+    setsContainer.appendChild(createSetGridRow(i + 1, null, '', ''));
+  }
+
+  // Refresh the swap dropdown itself so it no longer offers its own new name
+  populateSwapOptions(card.querySelector('[data-role="swap-select"]'), newName);
+
+  // Refresh history/streak for the new exercise name
+  if (state.csvLoaded) {
+    applyHistoryToSingleCard(card, newName, state.currentDay, todayISO());
+  }
+
+  // Collapse state is tracked per exercise name -- carry over the
+  // current visual state under the new key so toggling still works.
+  setCollapsedState(state.currentDay + '|' + newName, card.classList.contains('collapsed'));
+
+  refreshAddExerciseControl();
+  handleInputChange();
+  showToast('Swapped to ' + newName);
+}
+
+/**
+ * addExerciseCardToToday(name)
+ * Appends a brand-new card for an exercise that isn't part of
+ * today's session yet, sourced from the day's library defaults.
+ * Session-local only -- never writes to exercises.json.
+ */
+function addExerciseCardToToday(name) {
+  const dayDefs = getDayExerciseDefs();
+  const def = dayDefs.find(d => d.name === name);
+  if (!def) return;
+
+  const list = document.getElementById('exercise-list');
+  const addControl = list.querySelector('[data-role="add-exercise-control"]');
+
+  const card = buildExerciseCard(def, null);
+  if (addControl) {
+    list.insertBefore(card, addControl);
+  } else {
+    list.appendChild(card);
+  }
+
+  if (state.csvLoaded) {
+    applyHistoryToSingleCard(card, name, state.currentDay, todayISO());
+  }
+
+  refreshAddExerciseControl();
+  handleInputChange();
+  showToast(name + ' added to today\u2019s session');
+}
+
+/**
+ * handleRemoveExerciseCard(card)
+ * Removes a card from today's session entirely. Session-local --
+ * never touches exercises.json, so the day's permanent default
+ * list is unaffected. Always keeps at least one exercise card.
+ */
+function handleRemoveExerciseCard(card) {
+  const list = document.getElementById('exercise-list');
+  const remainingCards = list.querySelectorAll('.exercise-card').length;
+
+  if (remainingCards <= 1) {
+    showToast('At least one exercise is required');
+    return;
+  }
+
+  const name = card.dataset.exercise;
+  card.remove();
+  refreshAddExerciseControl();
+  handleInputChange();
+  showToast(name + ' removed from today\u2019s session');
+}
+
+/**
+ * refreshAddExerciseControl()
+ * Re-renders the bottom add-exercise picker's options after any
+ * swap/add/remove changes which exercises are still available to add.
+ */
+function refreshAddExerciseControl() {
+  const list = document.getElementById('exercise-list');
+  const select = list.querySelector('.add-exercise-select');
+  if (select) {
+    populateAddExerciseOptions(select);
+  }
+}
+
+function escapeHtmlIndex(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function buildExerciseCard(ex, savedData) {
@@ -295,16 +542,49 @@ function buildExerciseCard(ex, savedData) {
   card.className = 'exercise-card exercise-block' + (isCollapsed ? ' collapsed' : '');
   card.dataset.exercise = ex.name;
 
-  const header = document.createElement('button');
+  const header = document.createElement('div');
   header.className = 'exercise-card-header';
-  header.type = 'button';
-  header.innerHTML =
-    '<span class="exercise-card-name">' + ex.name + '</span>' +
+
+  const headerToggle = document.createElement('button');
+  headerToggle.className = 'exercise-card-header-toggle';
+  headerToggle.type = 'button';
+  headerToggle.innerHTML =
+    '<span class="exercise-card-name" data-role="exercise-name">' + escapeHtmlIndex(ex.name) + '</span>' +
     '<span class="exercise-card-chevron">&#9662;</span>';
-  header.addEventListener('click', () => {
+  headerToggle.addEventListener('click', () => {
     card.classList.toggle('collapsed');
-    setCollapsedState(exerciseKey, card.classList.contains('collapsed'));
+    setCollapsedState(state.currentDay + '|' + card.dataset.exercise, card.classList.contains('collapsed'));
   });
+  header.appendChild(headerToggle);
+
+  const headerActions = document.createElement('div');
+  headerActions.className = 'exercise-card-header-actions';
+
+  // Swap dropdown -- lists other exercises assigned to the current day
+  const swapSelect = document.createElement('select');
+  swapSelect.className = 'exercise-swap-select';
+  swapSelect.setAttribute('aria-label', 'Swap exercise');
+  swapSelect.dataset.role = 'swap-select';
+  populateSwapOptions(swapSelect, ex.name);
+  swapSelect.addEventListener('click', (e) => e.stopPropagation());
+  swapSelect.addEventListener('change', () => {
+    handleSwapExercise(card, swapSelect.value);
+  });
+  headerActions.appendChild(swapSelect);
+
+  // Remove-from-today button
+  const removeCardBtn = document.createElement('button');
+  removeCardBtn.className = 'exercise-card-remove';
+  removeCardBtn.type = 'button';
+  removeCardBtn.setAttribute('aria-label', 'Remove from today');
+  removeCardBtn.textContent = '\u00d7';
+  removeCardBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleRemoveExerciseCard(card);
+  });
+  headerActions.appendChild(removeCardBtn);
+
+  header.appendChild(headerActions);
   card.appendChild(header);
 
   const body = document.createElement('div');
@@ -543,57 +823,64 @@ async function loadHistoryAndStreaks(day) {
 
 function applyHistoryToCards(day, today) {
   const list = document.getElementById('exercise-list');
+  const cards = list.querySelectorAll('.exercise-card');
 
-  for (const ex of state.exercises) {
-    const card = list.querySelector('.exercise-card[data-exercise="' + CSS.escape(ex.name) + '"]');
-    if (!card) continue;
-
-    const histData = state.lastSession.get(ex.name);
-    const histSets = histData ? histData.sets : [];
-
-    // Only auto-grow/shrink row count from history if the user hasn't
-    // already typed anything (a saved localStorage draft takes priority)
-    const alreadyHasDraft = !!loadFromLocalStorage(day);
-    const setsContainer = card.querySelector('.sets-container');
-    const addBtn = card.querySelector('.add-set-btn');
-
-    if (!alreadyHasDraft && histSets.length > 0) {
-      while (setsContainer.querySelectorAll('.set-grid-row').length < histSets.length) {
-        const n = setsContainer.querySelectorAll('.set-grid-row').length + 1;
-        const newRow = createSetGridRow(n, null, '', '');
-        setsContainer.appendChild(newRow);
-      }
-    }
-
-    // Now fill in the "last time" readout cells, set-number aligned
-    const rows = setsContainer.querySelectorAll('.set-grid-row');
-    rows.forEach((row, idx) => {
-      const lastCell = row.querySelector('.set-cell-last');
-      const hist = histSets[idx];
-      if (hist) {
-        lastCell.className = 'set-cell-last';
-        lastCell.textContent = formatWeight(hist.weight) + '\u00d7' + hist.reps;
-      } else {
-        lastCell.className = 'set-cell-last empty';
-        lastCell.textContent = '\u2013';
-      }
-    });
-
-    // Streak note
-    const streak = getConsecutiveStreak(state.csvRows, ex.name, day, today);
-    const streakEl = card.querySelector('[data-role="streak-note"]');
-    if (streak) {
-      streakEl.classList.remove('hidden');
-      streakEl.innerHTML =
-        '<span>' + formatWeight(streak.weight) + '\u00d7' + streak.reps +
-        ' on ' + ex.name + ' for the last ' + streak.count + ' sessions</span>';
-    } else {
-      streakEl.classList.add('hidden');
-      streakEl.innerHTML = '';
-    }
-  }
+  // Iterate the LIVE DOM cards rather than the static library
+  // defaults -- if the user swapped, added, or removed an exercise
+  // before this async history load finished, the DOM may already
+  // differ from state.exercises. Keying off the DOM ensures every
+  // currently-visible card gets its history populated correctly.
+  cards.forEach(card => {
+    const name = card.dataset.exercise;
+    if (!name) return;
+    applyHistoryToSingleCard(card, name, day, today);
+  });
 
   updateExerciseLoadDisplays();
+}
+
+/**
+ * applyHistoryToSingleCard(card, exerciseName, day, today)
+ * Populates the Last Time column and streak note for ONE card,
+ * keyed by exerciseName. Used both by the initial full-list history
+ * load and by the exercise-swap dropdown (which needs to refresh
+ * just the one card whose exercise changed).
+ *
+ * Unlike the initial load, this does NOT auto-grow/shrink the set
+ * row count from history -- on a swap, the existing row count (and
+ * any already-typed values) is left alone, since the user may be
+ * mid-entry and an unexpected row-count change would be disruptive.
+ */
+function applyHistoryToSingleCard(card, exerciseName, day, today) {
+  const histData = state.lastSession.get(exerciseName);
+  const histSets = histData ? histData.sets : [];
+
+  const setsContainer = card.querySelector('.sets-container');
+  const rows = setsContainer.querySelectorAll('.set-grid-row');
+
+  rows.forEach((row, idx) => {
+    const lastCell = row.querySelector('.set-cell-last');
+    const hist = histSets[idx];
+    if (hist) {
+      lastCell.className = 'set-cell-last';
+      lastCell.textContent = formatWeight(hist.weight) + '\u00d7' + hist.reps;
+    } else {
+      lastCell.className = 'set-cell-last empty';
+      lastCell.textContent = '\u2013';
+    }
+  });
+
+  const streak = getConsecutiveStreak(state.csvRows, exerciseName, day, today);
+  const streakEl = card.querySelector('[data-role="streak-note"]');
+  if (streak) {
+    streakEl.classList.remove('hidden');
+    streakEl.innerHTML =
+      '<span>' + formatWeight(streak.weight) + '\u00d7' + streak.reps +
+      ' on ' + exerciseName + ' for the last ' + streak.count + ' sessions</span>';
+  } else {
+    streakEl.classList.add('hidden');
+    streakEl.innerHTML = '';
+  }
 }
 </script>
 
