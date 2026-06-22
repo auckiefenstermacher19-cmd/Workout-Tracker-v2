@@ -373,12 +373,39 @@ function appendAddExerciseControl(list) {
 }
 
 /**
+ * DAY_ORDER
+ * Canonical day ordering used everywhere a cross-day list needs to
+ * be grouped predictably (dropdowns, etc.).
+ */
+const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+
+/**
  * getDayExerciseDefs()
- * Returns the array of {name, defaultSets} objects for the current
- * day from the loaded exercises.json, or [] if unavailable.
+ * Returns the array of {name, defaultSets} objects for the CURRENT
+ * day only. Still used for the initial default session population
+ * (today's starting card list is still seeded from the matching
+ * day, per the original design) -- cross-day applies to swap/add,
+ * not to what a fresh session starts with.
  */
 function getDayExerciseDefs() {
   return (EXERCISES && EXERCISES[state.currentDay]) ? EXERCISES[state.currentDay] : [];
+}
+
+/**
+ * findExerciseDef(name)
+ * Looks up an exercise definition by name across ALL days in the
+ * library (not just the current day), since swap/add now allow
+ * borrowing exercises across days. Returns the first match found
+ * in DAY_ORDER, or null.
+ */
+function findExerciseDef(name) {
+  if (!EXERCISES) return null;
+  for (const day of DAY_ORDER) {
+    const defs = EXERCISES[day] || [];
+    const found = defs.find(d => d.name === name);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -393,62 +420,106 @@ function getNamesCurrentlyInSession() {
 }
 
 /**
- * populateSwapOptions(selectEl, currentName)
- * Fills a swap <select> with every exercise assigned to the
- * current day except the one currently shown on this card.
+ * buildGroupedExerciseOptions(selectEl, excludeNames, placeholderText, emptyText)
+ * Shared builder for both the swap dropdown and the add-exercise
+ * dropdown. Lists EVERY exercise across the whole library, grouped
+ * into <optgroup> sections by day (in DAY_ORDER), letting the user
+ * borrow exercises from any day -- not just the current one.
+ *
+ * An exercise name that appears under more than one day (e.g.
+ * "Tricep Pushdown" under both Chest and Arms) is only listed once,
+ * grouped under whichever day it's first encountered in DAY_ORDER.
+ *
+ * @param {HTMLSelectElement} selectEl
+ * @param {Set<string>} excludeNames  names to leave out entirely
+ * @param {string} placeholderText
+ * @param {string} emptyText  shown if nothing is available at all
  */
-function populateSwapOptions(selectEl, currentName) {
-  const dayDefs = getDayExerciseDefs();
-
+function buildGroupedExerciseOptions(selectEl, excludeNames, placeholderText, emptyText) {
   selectEl.innerHTML = '';
+
+  if (!EXERCISES) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = emptyText;
+    selectEl.appendChild(opt);
+    return;
+  }
+
+  const seen = new Set();
+  let anyOptions = false;
 
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = 'Swap \u2193';
+  placeholder.textContent = placeholderText;
   selectEl.appendChild(placeholder);
 
-  for (const def of dayDefs) {
-    if (def.name === currentName) continue;
+  for (const day of DAY_ORDER) {
+    const defs = EXERCISES[day] || [];
+    const dayOptions = [];
+
+    for (const def of defs) {
+      if (seen.has(def.name)) continue;
+      if (excludeNames.has(def.name)) continue;
+      seen.add(def.name);
+      dayOptions.push(def);
+    }
+
+    if (dayOptions.length === 0) continue;
+
+    const group = document.createElement('optgroup');
+    group.label = day;
+    for (const def of dayOptions) {
+      const opt = document.createElement('option');
+      opt.value = def.name;
+      opt.textContent = def.name;
+      group.appendChild(opt);
+      anyOptions = true;
+    }
+    selectEl.appendChild(group);
+  }
+
+  if (!anyOptions) {
+    selectEl.innerHTML = '';
     const opt = document.createElement('option');
-    opt.value = def.name;
-    opt.textContent = def.name;
+    opt.value = '';
+    opt.textContent = emptyText;
     selectEl.appendChild(opt);
   }
 }
 
 /**
+ * populateSwapOptions(selectEl, currentName)
+ * Fills a swap <select> with every exercise in the WHOLE library,
+ * grouped by day, except:
+ *   - currentName (this card's own exercise -- can't swap to itself)
+ *   - any other exercise already present as a different card in
+ *     today's session (no duplicates)
+ *
+ * currentName is passed explicitly because this function is also
+ * called during buildExerciseCard, before the card is appended to
+ * the DOM -- so we can't rely on getNamesCurrentlyInSession() to
+ * include this card's exercise name yet (it would be absent, causing
+ * Shoulder Press to show itself as a swap target on its own card).
+ */
+function populateSwapOptions(selectEl, currentName) {
+  const inSession = getNamesCurrentlyInSession();
+  // Add currentName explicitly -- it's this card's own exercise, and
+  // it may not be in inSession yet if the card hasn't hit the DOM.
+  const exclude = new Set(inSession);
+  exclude.add(currentName);
+  buildGroupedExerciseOptions(selectEl, exclude, 'Swap \u2193', 'No other exercises available');
+}
+
+/**
  * populateAddExerciseOptions(selectEl)
- * Fills the bottom "add exercise" <select> with day-scoped
- * exercises that are NOT already present as a card in today's
- * session.
+ * Fills the bottom "add exercise" <select> with every exercise in
+ * the whole library, grouped by day, except those already present
+ * as a card in today's session.
  */
 function populateAddExerciseOptions(selectEl) {
-  const dayDefs = getDayExerciseDefs();
   const inSession = getNamesCurrentlyInSession();
-
-  selectEl.innerHTML = '';
-
-  const available = dayDefs.filter(def => !inSession.has(def.name));
-
-  if (available.length === 0) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'All exercises already added';
-    selectEl.appendChild(opt);
-    return;
-  }
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = 'Choose an exercise\u2026';
-  selectEl.appendChild(placeholder);
-
-  for (const def of available) {
-    const opt = document.createElement('option');
-    opt.value = def.name;
-    opt.textContent = def.name;
-    selectEl.appendChild(opt);
-  }
+  buildGroupedExerciseOptions(selectEl, inSession, 'Choose an exercise\u2026', 'All exercises already added');
 }
 
 /**
@@ -463,8 +534,7 @@ function populateAddExerciseOptions(selectEl) {
 function handleSwapExercise(card, newName) {
   if (!newName) return;
 
-  const dayDefs = getDayExerciseDefs();
-  const def = dayDefs.find(d => d.name === newName);
+  const def = findExerciseDef(newName);
   if (!def) return;
 
   const oldName = card.dataset.exercise;
@@ -512,12 +582,13 @@ function handleSwapExercise(card, newName) {
 /**
  * addExerciseCardToToday(name)
  * Appends a brand-new card for an exercise that isn't part of
- * today's session yet, sourced from the day's library defaults.
+ * today's session yet, sourced from anywhere in the library --
+ * not just the current day's defaults. This is what lets you pull
+ * in e.g. Front Squat on Shoulder day, or Cable Curls on Arm day.
  * Session-local only -- never writes to exercises.json.
  */
 function addExerciseCardToToday(name) {
-  const dayDefs = getDayExerciseDefs();
-  const def = dayDefs.find(d => d.name === name);
+  const def = findExerciseDef(name);
   if (!def) return;
 
   const list = document.getElementById('exercise-list');
