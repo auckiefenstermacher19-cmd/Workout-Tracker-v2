@@ -206,7 +206,9 @@ function parseCSV(rawText) {
         date:              cols[0].trim(),
         workoutDay:        cols[1].trim(),
         exercise:          cols[2].trim(),
-        setNumber:         parseInt(cols[3], 10),
+        // Store as string so both normal ("1","2") and superset
+        // ("1A","1B") set numbers survive round-trips unchanged.
+        setNumber:         cols[3].trim(),
         weight:            parseFloat(cols[4]),
         reps:              parseInt(cols[5], 10),
         load:              parseFloat(cols[6]),
@@ -214,7 +216,7 @@ function parseCSV(rawText) {
         totalWorkoutLoad:  parseFloat(cols[8])
       };
     })
-    .filter(row => row !== null && !isNaN(row.setNumber));
+    .filter(row => row !== null && row.setNumber && row.setNumber.length > 0);
 }
 
 function parseRecordsCSV(rawText) {
@@ -314,7 +316,7 @@ function getLastSession(rows, workoutDay, excludeDate) {
   }
 
   for (const [, data] of result) {
-    data.sets.sort((a, b) => a.setNumber - b.setNumber);
+    data.sets.sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
   }
 
   return result;
@@ -491,11 +493,14 @@ function rebuildRowObjects(date, workoutDay, exercisesMap) {
     const exerciseLoad = calcExerciseLoad(sets);
 
     sets.forEach((set, idx) => {
+      // Superset rows carry a setLabel like "1A" or "1B" set by
+      // buildExercisesMapFromDOM. Normal rows use sequential integers.
+      const setNum = set.setLabel !== undefined ? set.setLabel : String(idx + 1);
       rows.push({
         date: date,
         workoutDay: workoutDay,
         exercise: exerciseName,
-        setNumber: idx + 1,
+        setNumber: setNum,
         weight: set.weight,
         reps: set.reps,
         load: calcLoad(set.weight, set.reps),
@@ -717,7 +722,7 @@ function renderDayDetail(containerEl, rows, dateStr) {
     exerciseMap.get(row.exercise).push(row);
   }
   for (const entry of exerciseMap) {
-    entry[1].sort((a, b) => a.setNumber - b.setNumber);
+    entry[1].sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
   }
 
   let html = '';
@@ -951,19 +956,39 @@ function buildExercisesMapFromDOM(sessionEntryEl) {
     const name = block.dataset.exercise;
     if (!name) continue;
 
+    const isSuperset = block.dataset.superset === 'true';
     const setRows = block.querySelectorAll('.set-row');
     const sets = [];
 
     for (const row of setRows) {
-      const weightInput = row.querySelector('.input-weight');
-      const repsInput   = row.querySelector('.input-reps');
-      if (!weightInput || !repsInput) continue;
+      const roundNum = row.dataset.round || (sets.length + 1);
 
-      const weight = parseFloat(weightInput.value);
-      const reps   = parseInt(repsInput.value, 10);
+      if (isSuperset) {
+        // Superset rows have two pairs: A and B
+        const weightA = parseFloat(row.querySelector('.input-weight-a') ? row.querySelector('.input-weight-a').value : row.querySelector('.input-weight').value);
+        const repsA   = parseInt((row.querySelector('.input-reps-a') ? row.querySelector('.input-reps-a').value : row.querySelector('.input-reps').value), 10);
+        const weightB = parseFloat(row.querySelector('.input-weight-b') ? row.querySelector('.input-weight-b').value : 0);
+        const repsB   = parseInt(row.querySelector('.input-reps-b') ? row.querySelector('.input-reps-b').value : 0, 10);
 
-      if (!isNaN(weight) && weight > 0 && !isNaN(reps) && reps > 0) {
-        sets.push({ weight: weight, reps: reps });
+        const roundLabel = row.dataset.round || String(sets.filter(s => s.setLabel && s.setLabel.endsWith('A')).length + 1);
+
+        if (!isNaN(weightA) && weightA > 0 && !isNaN(repsA) && repsA > 0) {
+          sets.push({ weight: weightA, reps: repsA, setLabel: roundLabel + 'A' });
+        }
+        if (!isNaN(weightB) && weightB > 0 && !isNaN(repsB) && repsB > 0) {
+          sets.push({ weight: weightB, reps: repsB, setLabel: roundLabel + 'B' });
+        }
+      } else {
+        const weightInput = row.querySelector('.input-weight');
+        const repsInput   = row.querySelector('.input-reps');
+        if (!weightInput || !repsInput) continue;
+
+        const weight = parseFloat(weightInput.value);
+        const reps   = parseInt(repsInput.value, 10);
+
+        if (!isNaN(weight) && weight > 0 && !isNaN(reps) && reps > 0) {
+          sets.push({ weight: weight, reps: reps });
+        }
       }
     }
 
