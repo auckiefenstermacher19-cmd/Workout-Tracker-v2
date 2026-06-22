@@ -679,6 +679,21 @@ p, li {
   border-color: var(--accent);
 }
 
+/* optgroup labels render using native OS styling on most mobile
+   browsers (iOS shows a picker wheel that ignores this entirely),
+   but on desktop/Android this gives the day-group headers inside
+   the dropdown a bit of visual distinction from the exercise names. */
+.exercise-swap-select optgroup {
+  font-weight: 700;
+  font-style: normal;
+  color: var(--text-secondary);
+}
+
+.exercise-swap-select option {
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
 /* Remove-card button in the card header */
 .exercise-card-remove {
   display: flex;
