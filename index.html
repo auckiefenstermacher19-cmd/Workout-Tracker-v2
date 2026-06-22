@@ -654,10 +654,12 @@ function escapeHtmlIndex(str) {
 function buildExerciseCard(ex, savedData) {
   const exerciseKey = state.currentDay + '|' + ex.name;
   const isCollapsed = getCollapsedState(exerciseKey);
+  const isSuperset = ex.name.toLowerCase().includes('superset');
 
   const card = document.createElement('div');
   card.className = 'exercise-card exercise-block' + (isCollapsed ? ' collapsed' : '');
   card.dataset.exercise = ex.name;
+  if (isSuperset) card.dataset.superset = 'true';
 
   const header = document.createElement('div');
   header.className = 'exercise-card-header';
@@ -708,8 +710,12 @@ function buildExerciseCard(ex, savedData) {
   body.className = 'exercise-card-body';
 
   const gridHeader = document.createElement('div');
-  gridHeader.className = 'set-grid-header';
-  gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today</span>';
+  gridHeader.className = 'set-grid-header' + (isSuperset ? ' set-grid-header-superset' : '');
+  if (isSuperset) {
+    gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today (A)</span><span>Today (B)</span>';
+  } else {
+    gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today</span>';
+  }
   body.appendChild(gridHeader);
 
   const setsContainer = document.createElement('div');
@@ -726,7 +732,9 @@ function buildExerciseCard(ex, savedData) {
   for (let i = 0; i < initialCount; i++) {
     const w = savedSets && savedSets[i] ? savedSets[i].weight : '';
     const r = savedSets && savedSets[i] ? savedSets[i].reps   : '';
-    setsContainer.appendChild(createSetGridRow(i + 1, null, w, r));
+    const wB = savedSets && savedSets[i] ? (savedSets[i].weightB || '') : '';
+    const rB = savedSets && savedSets[i] ? (savedSets[i].repsB || '') : '';
+    setsContainer.appendChild(createSetGridRow(i + 1, null, w, r, isSuperset, wB, rB));
   }
 
   const addBtn = document.createElement('button');
@@ -735,9 +743,9 @@ function buildExerciseCard(ex, savedData) {
   addBtn.textContent = '+ Add set';
   addBtn.addEventListener('click', () => {
     const rows = setsContainer.querySelectorAll('.set-grid-row');
-    const newRow = createSetGridRow(rows.length + 1, null, '', '');
+    const newRow = createSetGridRow(rows.length + 1, null, '', '', isSuperset, '', '');
     setsContainer.appendChild(newRow);
-    newRow.querySelector('.set-input-weight').focus();
+    newRow.querySelector('.set-input-weight, .set-input-weight-a').focus();
   });
   body.appendChild(addBtn);
 
@@ -756,59 +764,120 @@ function buildExerciseCard(ex, savedData) {
   return card;
 }
 
-function createSetGridRow(num, lastSetData, weightVal, repsVal) {
+/**
+ * createSetGridRow(num, lastSetData, weightVal, repsVal, isSuperset, weightBVal, repsBVal)
+ *
+ * For normal exercises: one weight×reps pair in "Today" column.
+ * For superset exercises: two pairs side-by-side (A and B), each
+ * with their own weight/reps inputs.
+ *
+ * The "Last time" cell shows the prior session's values.
+ * Weight/reps labels are shown inside each Today cell so the user
+ * always knows which input is which without needing to remember the
+ * column order.
+ */
+function createSetGridRow(num, lastSetData, weightVal, repsVal, isSuperset, weightBVal, repsBVal) {
   const row = document.createElement('div');
-  row.className = 'set-grid-row set-row';
+  row.className = 'set-grid-row set-row' + (isSuperset ? ' set-grid-row-superset' : '');
+  row.dataset.round = num;
 
+  // Set number cell
   const numEl = document.createElement('span');
   numEl.className = 'set-grid-num';
   numEl.textContent = num;
   row.appendChild(numEl);
 
+  // Last time cell
   const lastCell = document.createElement('div');
   if (lastSetData) {
     lastCell.className = 'set-cell-last';
-    lastCell.textContent = formatWeight(lastSetData.weight) + '\u00d7' + lastSetData.reps;
+    if (isSuperset && lastSetData.b) {
+      lastCell.innerHTML =
+        '<span class="set-cell-sublabel">A</span>' +
+        formatWeight(lastSetData.a.weight) + '\u00d7' + lastSetData.a.reps +
+        '<br><span class="set-cell-sublabel">B</span>' +
+        formatWeight(lastSetData.b.weight) + '\u00d7' + lastSetData.b.reps;
+    } else {
+      lastCell.textContent = formatWeight(lastSetData.weight) + '\u00d7' + lastSetData.reps;
+    }
   } else {
     lastCell.className = 'set-cell-last empty';
     lastCell.textContent = '\u2013';
   }
   row.appendChild(lastCell);
 
-  const todayCell = document.createElement('div');
-  todayCell.className = 'set-cell-today' + (weightVal || repsVal ? '' : ' unfilled');
+  // Helper to build a labeled weight×reps input pair
+  function makeInputPair(wVal, rVal, suffix, labelA, labelB) {
+    const cell = document.createElement('div');
+    cell.className = 'set-cell-today' + (wVal || rVal ? '' : ' unfilled');
 
-  const weightInput = document.createElement('input');
-  weightInput.className = 'set-input set-input-weight';
-  weightInput.type = 'number';
-  weightInput.inputMode = 'decimal';
-  weightInput.placeholder = '0';
-  weightInput.value = weightVal || '';
-  weightInput.min = '0';
-  weightInput.step = '2.5';
-  weightInput.setAttribute('aria-label', 'Weight for set ' + num);
+    const labels = document.createElement('div');
+    labels.className = 'set-cell-labels';
+    labels.innerHTML = '<span>' + labelA + '</span><span>' + labelB + '</span>';
+    cell.appendChild(labels);
 
-  const sep = document.createElement('span');
-  sep.className = 'set-cell-sep';
-  sep.textContent = '\u00d7';
+    const inputs = document.createElement('div');
+    inputs.className = 'set-cell-inputs';
 
-  const repsInput = document.createElement('input');
-  repsInput.className = 'set-input set-input-reps';
-  repsInput.type = 'number';
-  repsInput.inputMode = 'numeric';
-  repsInput.placeholder = '0';
-  repsInput.value = repsVal || '';
-  repsInput.min = '0';
-  repsInput.step = '1';
-  repsInput.setAttribute('aria-label', 'Reps for set ' + num);
+    const wInput = document.createElement('input');
+    wInput.className = 'set-input set-input-weight' + suffix + ' input-weight' + suffix;
+    wInput.type = 'number';
+    wInput.inputMode = 'decimal';
+    wInput.placeholder = '0';
+    wInput.value = wVal || '';
+    wInput.min = '0';
+    wInput.step = '2.5';
+    wInput.setAttribute('aria-label', 'Weight for set ' + num + (suffix ? ' ' + suffix.replace('-', '') : ''));
 
-  todayCell.appendChild(weightInput);
-  todayCell.appendChild(sep);
-  todayCell.appendChild(repsInput);
-  row.appendChild(todayCell);
+    const sep = document.createElement('span');
+    sep.className = 'set-cell-sep';
+    sep.textContent = '\u00d7';
 
-  // Remove control occupies its own grid cell (4th column).
-  // Row 1 gets an empty placeholder so the grid stays aligned.
+    const rInput = document.createElement('input');
+    rInput.className = 'set-input set-input-reps' + suffix + ' input-reps' + suffix;
+    rInput.type = 'number';
+    rInput.inputMode = 'numeric';
+    rInput.placeholder = '0';
+    rInput.value = rVal || '';
+    rInput.min = '0';
+    rInput.step = '1';
+    rInput.setAttribute('aria-label', 'Reps for set ' + num + (suffix ? ' ' + suffix.replace('-', '') : ''));
+
+    inputs.appendChild(wInput);
+    inputs.appendChild(sep);
+    inputs.appendChild(rInput);
+    cell.appendChild(inputs);
+
+    [wInput, rInput].forEach(inp => {
+      inp.addEventListener('input', () => {
+        cell.classList.toggle('unfilled', !wInput.value && !rInput.value);
+        handleInputChange();
+      });
+    });
+
+    // Legacy alias classes for DOM contract compatibility (app.js uses .input-weight / .input-reps)
+    if (!suffix) {
+      wInput.classList.add('input-weight');
+      rInput.classList.add('input-reps');
+    }
+
+    return { cell, wInput, rInput };
+  }
+
+  if (isSuperset) {
+    const pairA = makeInputPair(weightVal, repsVal, '-a', 'Wt', 'Reps');
+    pairA.cell.classList.add('set-cell-today-a');
+    row.appendChild(pairA.cell);
+
+    const pairB = makeInputPair(weightBVal, repsBVal, '-b', 'Wt', 'Reps');
+    pairB.cell.classList.add('set-cell-today-b');
+    row.appendChild(pairB.cell);
+  } else {
+    const pair = makeInputPair(weightVal, repsVal, '', 'Weight', 'Reps');
+    row.appendChild(pair.cell);
+  }
+
+  // Remove button (or spacer for row 1)
   if (num > 1) {
     const removeBtn = document.createElement('button');
     removeBtn.className = 'set-remove-row';
@@ -823,30 +892,20 @@ function createSetGridRow(num, lastSetData, weightVal, repsVal) {
     });
     row.appendChild(removeBtn);
   } else {
-    const spacer = document.createElement('span');
-    row.appendChild(spacer);
+    row.appendChild(document.createElement('span'));
   }
-
-  // Hidden alias used by createSetGridRow callers / DOM contract with app.js
-  weightInput.classList.add('input-weight');
-  repsInput.classList.add('input-reps');
-
-  [weightInput, repsInput].forEach(inp => {
-    inp.addEventListener('input', () => {
-      todayCell.classList.toggle('unfilled', !weightInput.value && !repsInput.value);
-      handleInputChange();
-    });
-  });
 
   return row;
 }
 
 function renumberSetGrid(container) {
   const rows = container.querySelectorAll('.set-grid-row');
+  const card = container.closest('.exercise-card');
+  const isSuperset = card && card.dataset.superset === 'true';
 
   if (rows.length === 0) {
     // Always keep at least one row — re-add a blank one
-    const newRow = createSetGridRow(1, null, '', '');
+    const newRow = createSetGridRow(1, null, '', '', isSuperset, '', '');
     container.appendChild(newRow);
     return;
   }
@@ -854,14 +913,16 @@ function renumberSetGrid(container) {
   rows.forEach((row, idx) => {
     const num = idx + 1;
     row.querySelector('.set-grid-num').textContent = num;
+    row.dataset.round = num;
 
-    // Ensure the 4th cell matches: row 1 = spacer, others = remove button
-    const fourthCell = row.lastElementChild;
-    const isRemoveBtn = fourthCell && fourthCell.classList.contains('set-remove-row');
+    // For superset rows the last child is the remove button OR spacer,
+    // same logic as normal rows since the grid column is the same.
+    const lastCell = row.lastElementChild;
+    const isRemoveBtn = lastCell && lastCell.classList.contains('set-remove-row');
 
     if (num === 1 && isRemoveBtn) {
       const spacer = document.createElement('span');
-      fourthCell.replaceWith(spacer);
+      lastCell.replaceWith(spacer);
     } else if (num > 1 && !isRemoveBtn) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'set-remove-row';
@@ -874,9 +935,9 @@ function renumberSetGrid(container) {
         renumberSetGrid(c);
         handleInputChange();
       });
-      fourthCell.replaceWith(removeBtn);
+      lastCell.replaceWith(removeBtn);
     } else if (num > 1 && isRemoveBtn) {
-      fourthCell.setAttribute('aria-label', 'Remove set ' + num);
+      lastCell.setAttribute('aria-label', 'Remove set ' + num);
     }
   });
 }
@@ -971,21 +1032,63 @@ function applyHistoryToCards(day, today) {
 function applyHistoryToSingleCard(card, exerciseName, day, today) {
   const histData = state.lastSession.get(exerciseName);
   const histSets = histData ? histData.sets : [];
+  const isSuperset = card.dataset.superset === 'true';
 
   const setsContainer = card.querySelector('.sets-container');
   const rows = setsContainer.querySelectorAll('.set-grid-row');
 
-  rows.forEach((row, idx) => {
-    const lastCell = row.querySelector('.set-cell-last');
-    const hist = histSets[idx];
-    if (hist) {
-      lastCell.className = 'set-cell-last';
-      lastCell.textContent = formatWeight(hist.weight) + '\u00d7' + hist.reps;
-    } else {
-      lastCell.className = 'set-cell-last empty';
-      lastCell.textContent = '\u2013';
+  if (isSuperset) {
+    // Superset history has interleaved A/B rows (1A, 1B, 2A, 2B...).
+    // Group them by round number (stripping A/B suffix) so each DOM
+    // row gets both values from that round for its Last Time cell.
+    const byRound = new Map();
+    for (const h of histSets) {
+      const label = String(h.setNumber || '');
+      const round = label.replace(/[AB]$/i, '') || label;
+      if (!byRound.has(round)) byRound.set(round, {});
+      if (label.endsWith('A') || label.endsWith('a')) {
+        byRound.get(round).a = h;
+      } else if (label.endsWith('B') || label.endsWith('b')) {
+        byRound.get(round).b = h;
+      } else {
+        byRound.get(round).a = h; // fallback: non-labelled goes to A slot
+      }
     }
-  });
+    const roundKeys = [...byRound.keys()].sort((x, y) =>
+      String(x).localeCompare(String(y), undefined, { numeric: true })
+    );
+
+    rows.forEach((row, idx) => {
+      const lastCell = row.querySelector('.set-cell-last');
+      const round = roundKeys[idx];
+      const hist = round ? byRound.get(round) : null;
+      if (hist && hist.a) {
+        lastCell.className = 'set-cell-last';
+        let html = '<span class="set-cell-sublabel">A</span>' +
+          formatWeight(hist.a.weight) + '\u00d7' + hist.a.reps;
+        if (hist.b) {
+          html += '<br><span class="set-cell-sublabel">B</span>' +
+            formatWeight(hist.b.weight) + '\u00d7' + hist.b.reps;
+        }
+        lastCell.innerHTML = html;
+      } else {
+        lastCell.className = 'set-cell-last empty';
+        lastCell.textContent = '\u2013';
+      }
+    });
+  } else {
+    rows.forEach((row, idx) => {
+      const lastCell = row.querySelector('.set-cell-last');
+      const hist = histSets[idx];
+      if (hist) {
+        lastCell.className = 'set-cell-last';
+        lastCell.textContent = formatWeight(hist.weight) + '\u00d7' + hist.reps;
+      } else {
+        lastCell.className = 'set-cell-last empty';
+        lastCell.textContent = '\u2013';
+      }
+    });
+  }
 
   const streak = getConsecutiveStreak(state.csvRows, exerciseName, day, today);
   const streakEl = card.querySelector('[data-role="streak-note"]');
