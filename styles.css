@@ -798,14 +798,15 @@ p, li {
 /* Today input cell — editable */
 .set-cell-today {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: center;
-  gap: var(--space-1);
-  min-height: 36px;
+  gap: 0;
+  min-height: 48px;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
+  padding: var(--space-1) var(--space-2);
   transition: border-color var(--dur-fast) var(--ease);
 }
 
@@ -854,6 +855,83 @@ p, li {
   color: var(--text-muted);
   font-size: 0.75rem;
   flex-shrink: 0;
+}
+
+/* ── Weight / Reps sub-labels inside Today cells ─────────────────
+   Show above the input pair so the user always knows which field
+   is weight and which is reps without needing to memorize layout. */
+.set-cell-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 var(--space-1);
+  margin-bottom: 2px;
+}
+
+.set-cell-labels span {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.set-cell-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Reorient Today cells to a column so labels sit above inputs */
+
+/* ── Superset grid layout ─────────────────────────────────────────
+   Superset rows need 5 columns: # | Last time | Today A | Today B | ×
+   The header uses the same 5-column template.                      */
+.set-grid-header-superset {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 1fr 20px;
+  gap: var(--space-2);
+  padding: 0 0 var(--space-2);
+}
+
+.set-grid-header-superset span {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.set-grid-row-superset {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 1fr 20px;
+  gap: var(--space-2);
+  align-items: start;
+  margin-bottom: var(--space-2);
+}
+
+/* Last Time cell for supersets stacks A and B values vertically */
+.set-grid-row-superset .set-cell-last {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* A/B sublabels inside the Last Time cell on superset rows */
+.set-cell-sublabel {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 2px;
 }
 
 .set-remove-row {
