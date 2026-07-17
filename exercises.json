@@ -37,6 +37,10 @@
     {
       "name": "Tricep Pushdown",
       "defaultSets": 3
+    },
+    {
+      "name": "Machine Cheat Press",
+      "defaultSets": 4
     }
   ],
   "Back": [
