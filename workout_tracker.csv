@@ -141,8 +141,9 @@ Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workou
 2026-06-19,Legs,Front Squat,1,225,5,1125,1125,1125
 2026-06-21,Legs,BB Squat,1,325,1,325,325,1125
 2026-06-21,Legs,Bulgarian Split Squat,1,100,8,800,800,1125
-2026-07-17,Chest,Flat Bench,1,225,2,450,2500,4050
-2026-07-17,Chest,Flat Bench,2,205,5,1025,2500,4050
-2026-07-17,Chest,Flat Bench,3,205,5,1025,2500,4050
-2026-07-17,Chest,Tricep Pushdown,1,70,10,700,1550,4050
-2026-07-17,Chest,Tricep Pushdown,2,85,10,850,1550,4050
+2026-07-17,Chest,Flat Bench,1,225,2,450,2500,4900
+2026-07-17,Chest,Flat Bench,2,205,5,1025,2500,4900
+2026-07-17,Chest,Flat Bench,3,205,5,1025,2500,4900
+2026-07-17,Chest,Tricep Pushdown,1,70,10,700,2400,4900
+2026-07-17,Chest,Tricep Pushdown,2,85,10,850,2400,4900
+2026-07-17,Chest,Tricep Pushdown,3,85,10,850,2400,4900
