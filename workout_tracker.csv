@@ -141,6 +141,7 @@ Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workou
 2026-06-19,Legs,Front Squat,1,225,5,1125,1125,1125
 2026-06-21,Legs,BB Squat,1,325,1,325,325,1125
 2026-06-21,Legs,Bulgarian Split Squat,1,100,8,800,800,1125
-2026-07-17,Chest,Machine Cheat Press,1,120,12,1440,3920,3920
-2026-07-17,Chest,Machine Cheat Press,2,140,12,1680,3920,3920
-2026-07-17,Chest,Machine Cheat Press,3,160,5,800,3920,3920
+2026-07-17,Chest,Machine Cheat Press,1,120,12,1440,5120,5120
+2026-07-17,Chest,Machine Cheat Press,2,140,12,1680,5120,5120
+2026-07-17,Chest,Machine Cheat Press,3,160,5,800,5120,5120
+2026-07-17,Chest,Machine Cheat Press,4,150,8,1200,5120,5120
