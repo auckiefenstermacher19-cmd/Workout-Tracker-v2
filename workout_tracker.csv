@@ -145,7 +145,8 @@ Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workou
 2026-07-17,Chest,Machine Cheat Press,2,140,12,1680,5120,5120
 2026-07-17,Chest,Machine Cheat Press,3,160,5,800,5120,5120
 2026-07-17,Chest,Machine Cheat Press,4,150,8,1200,5120,5120
-2026-07-18,Back,BB Row,1,225,10,2250,5925,6240
-2026-07-18,Back,BB Row,2,245,8,1960,5925,6240
-2026-07-18,Back,BB Row,3,245,7,1715,5925,6240
-2026-07-18,Back,Weighted Pull Ups,1,45,7,315,315,6240
+2026-07-18,Back,BB Row,1,225,10,2250,5925,6510
+2026-07-18,Back,BB Row,2,245,8,1960,5925,6510
+2026-07-18,Back,BB Row,3,245,7,1715,5925,6510
+2026-07-18,Back,Weighted Pull Ups,1,45,7,315,585,6510
+2026-07-18,Back,Weighted Pull Ups,2,45,6,270,585,6510
