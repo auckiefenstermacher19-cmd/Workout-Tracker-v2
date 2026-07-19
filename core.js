@@ -263,6 +263,61 @@
     return legacy;
   }
 
+  /**
+   * dedupeOrder(names) -> string[]
+   * Normalizes a raw ordered list of exercise names: drops falsy/non-string
+   * entries and duplicates, preserving first-seen order. Used to build the
+   * durable draft 'order' array from DOM block order.
+   */
+  function dedupeOrder(names) {
+    const out = [];
+    const seen = new Set();
+    if (!Array.isArray(names)) return out;
+    for (const n of names) {
+      if (!n || typeof n !== 'string') continue;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      out.push(n);
+    }
+    return out;
+  }
+
+  /**
+   * resumeRenderOrder(defaultNames, draft) -> string[]
+   * Order in which exercise cards render when a saved session draft resumes.
+   *  - No draft: the day's default order.
+   *  - Draft with an explicit 'order' array (authoritative): that order,
+   *    filtered to names still present in draft.exercises, then any draft
+   *    exercises missing from a stale order appended (rescue).
+   *  - Legacy draft without 'order': default order first (for names that
+   *    have draft data), then added-but-non-default exercises appended.
+   * Falls back to defaults when the computed order is empty (corrupt draft).
+   */
+  function resumeRenderOrder(defaultNames, draft) {
+    const defaults = dedupeOrder(defaultNames);
+    if (!draft || typeof draft !== 'object') return defaults;
+
+    const draftNames = (draft.exercises && typeof draft.exercises === 'object')
+      ? Object.keys(draft.exercises)
+      : [];
+    const draftSet = new Set(draftNames);
+
+    const savedOrder = Array.isArray(draft.order) ? dedupeOrder(draft.order) : null;
+    const out = [];
+    const seen = new Set();
+    const push = (n) => { if (n && !seen.has(n)) { seen.add(n); out.push(n); } };
+
+    if (savedOrder && savedOrder.length) {
+      for (const n of savedOrder) if (draftSet.has(n)) push(n);
+      for (const n of draftNames) push(n); // rescue any missing from a stale order
+    } else {
+      for (const n of defaults) if (draftSet.has(n)) push(n);
+      for (const n of draftNames) push(n); // added-but-non-default exercises
+    }
+
+    return out.length ? out : defaults;
+  }
+
   const api = {
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
@@ -281,7 +336,9 @@
     slugifyDayId: slugifyDayId,
     adaptExercisesModel: adaptExercisesModel,
     serializeExercisesModel: serializeExercisesModel,
-    modelToLegacyMap: modelToLegacyMap
+    modelToLegacyMap: modelToLegacyMap,
+    dedupeOrder: dedupeOrder,
+    resumeRenderOrder: resumeRenderOrder
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
