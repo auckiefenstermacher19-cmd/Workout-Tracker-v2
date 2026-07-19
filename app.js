@@ -605,74 +605,122 @@ function formatWeight(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-function renderDayDetail(containerEl, rows, dateStr) {
-  const dayRows = getSessionsOnDate(rows, dateStr);
+function renderDayDetail(containerEl, rows, dateStr, opts) {
+  opts = opts || {};
+  const dayColors     = opts.dayColors || {};
+  const editSessionId = opts.editSessionId || null;
+  const editOrder     = opts.editOrder || null;
 
-  if (dayRows.length === 0) {
+  const sessions = sessionsOnDate(rows, dateStr);
+  if (sessions.length === 0) {
     containerEl.innerHTML = '<div class="empty-state">No workout logged for this date.</div>';
     return;
   }
 
-  const workoutDay  = dayRows[0].workoutDay;
   const displayDate = formatDisplayDate(dateStr);
-  const totalLoad   = dayRows[0].totalWorkoutLoad;
+  const dayTotal    = combinedDayLoad(rows, dateStr);
   const weekLoad    = calcWeekLoad(rows, dateStr);
+  const multi       = sessions.length > 1;
 
-  const exerciseMap = new Map();
-  for (const row of dayRows) {
-    if (!exerciseMap.has(row.exercise)) exerciseMap.set(row.exercise, []);
-    exerciseMap.get(row.exercise).push(row);
-  }
-  for (const entry of exerciseMap) {
-    entry[1].sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
-  }
+  // Ordered, de-duplicated workout-day names for the combined header.
+  const dayTypes = [];
+  for (const s of sessions) if (dayTypes.indexOf(s.workoutDay) === -1) dayTypes.push(s.workoutDay);
 
-  let html = '';
-  html += '<div class="day-detail">';
-  html += '<div class="day-detail-header">';
-  html += '<div class="day-detail-type">' + workoutDay + ' Day</div>';
-  html += '<div class="day-detail-date">' + displayDate + '</div>';
-  html += '</div>';
+  const colorAttr = name => (dayColors[name] ? ' data-day-color="' + dayColors[name] + '"' : '');
 
-  for (const entry of exerciseMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exLoad = sets[0].exerciseLoad;
-    const totalReps = sets.reduce((s, r) => s + r.reps, 0);
+  let html = '<div class="day-detail">';
 
-    html += '<div class="detail-exercise">';
-    html += '<div class="detail-exercise-name">' + exerciseName + '</div>';
-    html += '<div class="detail-set-row header-row"><span>Set</span><span>Weight</span><span>Reps</span><span>Load</span></div>';
+  // Combined day header: colored multi-type chips + date.
+  html += '<div class="day-detail-header"><div class="day-detail-type">';
+  html += dayTypes.map(name => '<span class="day-type-chip"' + colorAttr(name) + '>' + name + '</span>')
+                  .join('<span class="day-type-sep"> + </span>');
+  html += '</div><div class="day-detail-date">' + displayDate + '</div></div>';
 
-    for (const set of sets) {
-      html += '<div class="detail-set-row">' +
-        '<span class="set-col mono">' + set.setNumber + '</span>' +
-        '<span class="mono">' + formatWeight(set.weight) + ' lb</span>' +
-        '<span class="mono">' + set.reps + '</span>' +
-        '<span class="vol-col mono">' + formatLoad(set.load) + '</span>' +
-        '</div>';
+  // Sessions.
+  for (const session of sessions) {
+    const editing = session.sessionId === editSessionId;
+
+    // Group this session's rows by exercise, preserving first-seen order; sort sets.
+    const exMap = new Map();
+    for (const r of session.rows) {
+      if (!exMap.has(r.exercise)) exMap.set(r.exercise, []);
+      exMap.get(r.exercise).push(r);
+    }
+    for (const setsArr of exMap.values()) {
+      setsArr.sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
     }
 
-    html += '<div class="detail-exercise-subtotal">' +
-      '<span>' + sets.length + ' sets · ' + totalReps + ' reps</span>' +
-      '<span class="vol">' + formatLoad(exLoad) + '</span>' +
-      '</div>';
+    // Display order: live edit-preview order when editing, else natural row order.
+    let exNames = [...exMap.keys()];
+    if (editing && editOrder) {
+      const known = editOrder.filter(n => exMap.has(n));
+      exNames = known.concat(exNames.filter(n => known.indexOf(n) === -1));
+    }
+
+    const sessionSubtotal = session.rows.reduce((s, r) => s + r.load, 0);
+
+    html += '<div class="detail-session" data-session-id="' + session.sessionId + '">';
+    html += '<div class="detail-session-header">';
+    if (multi) {
+      html += '<span class="detail-session-type"' + colorAttr(session.workoutDay) + '>' + session.workoutDay + '</span>';
+      html += '<span class="detail-session-subtotal">' + formatLoad(sessionSubtotal) + '</span>';
+    }
+    if (editing) {
+      html += '<span class="edit-order-actions">' +
+        '<button class="btn btn-secondary btn-sm edit-order-cancel" data-session-id="' + session.sessionId + '">Cancel</button>' +
+        '<button class="btn btn-primary btn-sm edit-order-save" data-session-id="' + session.sessionId + '">Save order</button>' +
+        '</span>';
+    } else {
+      html += '<button class="btn btn-secondary btn-sm session-edit-btn" data-session-id="' + session.sessionId + '">Edit order</button>';
+    }
     html += '</div>';
+
+    exNames.forEach((exerciseName, idx) => {
+      const sets       = exMap.get(exerciseName);
+      const exSubtotal = sets.reduce((s, r) => s + r.load, 0);
+      const totalReps  = sets.reduce((s, r) => s + r.reps, 0);
+
+      html += '<div class="detail-exercise"><div class="detail-exercise-head">';
+      html += '<div class="detail-exercise-name">' + exerciseName + '</div>';
+      if (editing) {
+        const up   = idx === 0 ? ' disabled' : '';
+        const down = idx === exNames.length - 1 ? ' disabled' : '';
+        html += '<span class="ex-reorder">' +
+          '<button class="ex-move ex-up" data-ex="' + encodeURIComponent(exerciseName) + '"' + up + ' aria-label="Move up">&uarr;</button>' +
+          '<button class="ex-move ex-down" data-ex="' + encodeURIComponent(exerciseName) + '"' + down + ' aria-label="Move down">&darr;</button>' +
+          '</span>';
+      }
+      html += '</div>';
+
+      html += '<div class="detail-set-row header-row"><span>Set</span><span>Weight</span><span>Reps</span><span>Load</span></div>';
+      for (const set of sets) {
+        html += '<div class="detail-set-row">' +
+          '<span class="set-col mono">' + set.setNumber + '</span>' +
+          '<span class="mono">' + formatWeight(set.weight) + ' lb</span>' +
+          '<span class="mono">' + set.reps + '</span>' +
+          '<span class="vol-col mono">' + formatLoad(set.load) + '</span>' +
+          '</div>';
+      }
+      html += '<div class="detail-exercise-subtotal">' +
+        '<span>' + sets.length + ' sets · ' + totalReps + ' reps</span>' +
+        '<span class="vol">' + formatLoad(exSubtotal) + '</span>' +
+        '</div></div>';
+    });
+
+    html += '</div>'; // .detail-session
   }
 
-  html += '<div class="session-total-bar">' +
-    '<span class="label-text">Workout load</span>' +
-    '<span class="total-num">' + formatLoad(totalLoad) + '</span>' +
-    '</div>';
-
-  html += '<div class="session-total-bar week-load-bar">' +
-    '<span class="label-text">Week load</span>' +
-    '<span class="total-num">' + formatLoad(weekLoad) + '</span>' +
-    '</div>';
-
-  html += '</div>';
+  html += '<div class="session-total-bar"><span class="label-text">Day total</span>' +
+          '<span class="total-num">' + formatLoad(dayTotal) + '</span></div>';
+  html += '<div class="session-total-bar week-load-bar"><span class="label-text">Week load</span>' +
+          '<span class="total-num">' + formatLoad(weekLoad) + '</span></div>';
+  html += '</div>'; // .day-detail
 
   containerEl.innerHTML = html;
+
+  // Apply dynamic day colors via the shared helper (replaces fixed [data-day] CSS).
+  containerEl.querySelectorAll('[data-day-color]')
+    .forEach(el => applyDayColor(el, el.getAttribute('data-day-color')));
 }
 
 function createAutosaveEngine(opts) {
