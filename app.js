@@ -353,22 +353,12 @@ function getConsecutiveStreak(rows, exercise, workoutDay, excludeDate) {
 
 /* calcLoad / calcExerciseLoad / calcWorkoutLoad now live in core.js (loaded first). */
 
+// Delegates to core.js weekLoad (session-id-safe: sums combinedDayLoad per unique
+// date instead of the per-session totalWorkoutLoad field) so a week containing a
+// multi-session day is never undercounted.
 function calcWeekLoad(rows, isoDateInWeek) {
   const range = getWeekRange(isoDateInWeek);
-  const start = range.start;
-  const end = range.end;
-
-  const seenDates = new Set();
-  let total = 0;
-
-  for (const row of rows) {
-    if (row.date >= start && row.date <= end && !seenDates.has(row.date)) {
-      seenDates.add(row.date);
-      total += row.totalWorkoutLoad;
-    }
-  }
-
-  return total;
+  return weekLoad(rows, range.start, range.end);
 }
 
 function getWeekRange(isoDate) {

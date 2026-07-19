@@ -106,6 +106,23 @@
     }, 0);
   }
 
+  // Sums combinedDayLoad (not the per-session totalWorkoutLoad field) across every
+  // unique date in [startDateISO, endDateISO] so a calendar day with multiple
+  // sessions is never undercounted. Pure: does not mutate rows. Inclusive range.
+  function weekLoad(rows, startDateISO, endDateISO) {
+    const seen = new Set();
+    const dates = [];
+    for (const r of rows) {
+      if (r.date >= startDateISO && r.date <= endDateISO && !seen.has(r.date)) {
+        seen.add(r.date);
+        dates.push(r.date);
+      }
+    }
+    return dates.reduce(function (sum, d) {
+      return sum + combinedDayLoad(rows, d);
+    }, 0);
+  }
+
   function sessionsOnDate(rows, dateStr) {
     const groups = [];
     const byId = new Map();
@@ -328,6 +345,7 @@
     parseWorkoutCSV: parseWorkoutCSV,
     serializeWorkoutCSV: serializeWorkoutCSV,
     combinedDayLoad: combinedDayLoad,
+    weekLoad: weekLoad,
     sessionsOnDate: sessionsOnDate,
     rebuildSessionRows: rebuildSessionRows,
     commitReplaceSession: commitReplaceSession,
