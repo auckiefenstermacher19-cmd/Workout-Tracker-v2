@@ -120,3 +120,96 @@ test('parse -> serialize -> parse round-trips legacy rows stably', () => {
   assert.deepEqual(twice, once);
   assert.equal(once[0].sessionId, '2026-04-22|Back');
 });
+
+function twoSessionDay() {
+  return [
+    { date: '2026-05-01', workoutDay: 'Back',  exercise: 'BB Row',     setNumber: '1', weight: 200, reps: 5,  load: 1000, exerciseLoad: 1000, totalWorkoutLoad: 1000, sessionId: '2026-05-01-080000' },
+    { date: '2026-05-01', workoutDay: 'Chest', exercise: 'Flat Bench', setNumber: '1', weight: 100, reps: 10, load: 1000, exerciseLoad: 1000, totalWorkoutLoad: 1800, sessionId: '2026-05-01-173000' },
+    { date: '2026-05-01', workoutDay: 'Chest', exercise: 'Incline',    setNumber: '1', weight: 80,  reps: 10, load: 800,  exerciseLoad: 800,  totalWorkoutLoad: 1800, sessionId: '2026-05-01-173000' },
+    { date: '2026-05-02', workoutDay: 'Legs',  exercise: 'Squat',      setNumber: '1', weight: 300, reps: 5,  load: 1500, exerciseLoad: 1500, totalWorkoutLoad: 1500, sessionId: '2026-05-02-090000' }
+  ];
+}
+
+test('combinedDayLoad sums per-set load across every session that date', () => {
+  const rows = twoSessionDay();
+  assert.equal(core.combinedDayLoad(rows, '2026-05-01'), 2800); // 1000 + 1000 + 800, NOT duplicated totalWorkoutLoad
+  assert.equal(core.combinedDayLoad(rows, '2026-05-02'), 1500);
+  assert.equal(core.combinedDayLoad(rows, '2026-01-01'), 0);
+});
+
+test('sessionsOnDate groups by Session Id preserving row order', () => {
+  const groups = core.sessionsOnDate(twoSessionDay(), '2026-05-01');
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].sessionId, '2026-05-01-080000');
+  assert.equal(groups[0].workoutDay, 'Back');
+  assert.equal(groups[0].rows.length, 1);
+  assert.equal(groups[1].sessionId, '2026-05-01-173000');
+  assert.equal(groups[1].workoutDay, 'Chest');
+  assert.equal(groups[1].rows.length, 2);
+});
+
+test('rebuildSessionRows recomputes loads and stamps the session id in map order', () => {
+  const map = new Map();
+  map.set('Flat Bench', [{ weight: 100, reps: 10 }, { weight: 100, reps: 8 }]);
+  map.set('Incline',    [{ weight: 80, reps: 10 }]);
+  const rows = core.rebuildSessionRows('2026-05-01-173000', '2026-05-01', 'Chest', map);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].exercise, 'Flat Bench');
+  assert.equal(rows[0].setNumber, '1');
+  assert.equal(rows[0].load, 1000);
+  assert.equal(rows[0].exerciseLoad, 1000 + 800); // 100x10 + 100x8 = 1800
+  assert.equal(rows[0].totalWorkoutLoad, 1800 + 800); // + incline 80x10 = 2600
+  assert.equal(rows[2].exercise, 'Incline');
+  rows.forEach(function (r) { assert.equal(r.sessionId, '2026-05-01-173000'); });
+});
+
+test('rebuildSessionRows preserves superset set labels', () => {
+  const map = new Map();
+  map.set('Lateral Raise SS', [{ weight: 20, reps: 12, setLabel: '1A' }, { weight: 20, reps: 12, setLabel: '1B' }]);
+  const rows = core.rebuildSessionRows('sid', '2026-05-03', 'Shoulders', map);
+  assert.equal(rows[0].setNumber, '1A');
+  assert.equal(rows[1].setNumber, '1B');
+});
+
+test('commitReplaceSession replaces only the target session, never others', () => {
+  const all = twoSessionDay();
+  const newChest = [
+    { date: '2026-05-01', workoutDay: 'Chest', exercise: 'Flat Bench', setNumber: '1', weight: 110, reps: 10, load: 1100, exerciseLoad: 1100, totalWorkoutLoad: 1100, sessionId: '2026-05-01-173000' }
+  ];
+  const merged = core.commitReplaceSession(all, '2026-05-01-173000', newChest);
+  assert.equal(merged.filter(function (r) { return r.sessionId === '2026-05-01-080000'; }).length, 1);
+  assert.equal(merged.filter(function (r) { return r.sessionId === '2026-05-02-090000'; }).length, 1);
+  const chest = merged.filter(function (r) { return r.sessionId === '2026-05-01-173000'; });
+  assert.equal(chest.length, 1);
+  assert.equal(chest[0].weight, 110);
+});
+
+test('renameDayInRows rewrites only matching workoutDay values (new array, input unmutated)', () => {
+  const rows = twoSessionDay();
+  const out = core.renameDayInRows(rows, 'Chest', 'Push');
+  assert.equal(out.filter(function (r) { return r.workoutDay === 'Push'; }).length, 2);
+  assert.equal(out.filter(function (r) { return r.workoutDay === 'Chest'; }).length, 0);
+  assert.equal(out.filter(function (r) { return r.workoutDay === 'Back'; }).length, 1);
+  assert.notEqual(out, rows);
+  assert.equal(rows[1].workoutDay, 'Chest');
+});
+
+test('reorderSessionExercises reorders one session; others untouched', () => {
+  const rows = twoSessionDay();
+  const out = core.reorderSessionExercises(rows, '2026-05-01-173000', ['Incline', 'Flat Bench']);
+  const chest = out.filter(function (r) { return r.sessionId === '2026-05-01-173000'; });
+  assert.deepEqual(chest.map(function (r) { return r.exercise; }), ['Incline', 'Flat Bench']);
+  assert.equal(out[0].sessionId, '2026-05-01-080000');
+  assert.equal(out[out.length - 1].sessionId, '2026-05-02-090000');
+});
+
+test('reorderSessionExercises keeps unlisted exercises in original relative order at the end', () => {
+  const base = { date: 'd', workoutDay: 'X', setNumber: '1', weight: 1, reps: 1, load: 1, exerciseLoad: 1, totalWorkoutLoad: 3, sessionId: 's' };
+  const rows = [
+    Object.assign({}, base, { exercise: 'A' }),
+    Object.assign({}, base, { exercise: 'B' }),
+    Object.assign({}, base, { exercise: 'C' })
+  ];
+  const out = core.reorderSessionExercises(rows, 's', ['C']);
+  assert.deepEqual(out.map(function (r) { return r.exercise; }), ['C', 'A', 'B']);
+});

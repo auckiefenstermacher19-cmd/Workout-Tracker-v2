@@ -99,6 +99,103 @@
     return [CSV_HEADER].concat(lines).join('\n') + '\n';
   }
 
+  /* ─── Calendar-day aggregation & session grouping ─── */
+  function combinedDayLoad(rows, dateStr) {
+    return rows.reduce(function (sum, r) {
+      return r.date === dateStr ? sum + r.load : sum;
+    }, 0);
+  }
+
+  function sessionsOnDate(rows, dateStr) {
+    const groups = [];
+    const byId = new Map();
+    for (const r of rows) {
+      if (r.date !== dateStr) continue;
+      let g = byId.get(r.sessionId);
+      if (!g) {
+        g = { sessionId: r.sessionId, workoutDay: r.workoutDay, rows: [] };
+        byId.set(r.sessionId, g);
+        groups.push(g);
+      }
+      g.rows.push(r);
+    }
+    return groups;
+  }
+
+  /* ─── Build & save one session's rows (replaces old rebuildRowObjects) ─── */
+  function rebuildSessionRows(sessionId, date, workoutDay, exercisesMap) {
+    const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
+    const rows = [];
+    for (const entry of exercisesMap) {
+      const exerciseName = entry[0];
+      const sets = entry[1];
+      const exerciseLoad = calcExerciseLoad(sets);
+      sets.forEach(function (set, idx) {
+        const setNum = set.setLabel !== undefined ? set.setLabel : String(idx + 1);
+        rows.push({
+          date: date,
+          workoutDay: workoutDay,
+          exercise: exerciseName,
+          setNumber: setNum,
+          weight: set.weight,
+          reps: set.reps,
+          load: calcLoad(set.weight, set.reps),
+          exerciseLoad: exerciseLoad,
+          totalWorkoutLoad: totalWorkoutLoad,
+          sessionId: sessionId
+        });
+      });
+    }
+    return rows;
+  }
+
+  // Session-keyed save: drop the target session's rows, append the rebuilt ones.
+  function commitReplaceSession(allRows, sessionId, newSessionRows) {
+    const kept = allRows.filter(function (r) { return r.sessionId !== sessionId; });
+    return kept.concat(newSessionRows);
+  }
+
+  /* ─── History rewrite on day rename ─── */
+  function renameDayInRows(rows, oldName, newName) {
+    return rows.map(function (r) {
+      return r.workoutDay === oldName ? Object.assign({}, r, { workoutDay: newName }) : r;
+    });
+  }
+
+  /* ─── Reorder one session's exercises; unknown names keep relative order at end ─── */
+  function reorderSessionExercises(rows, sessionId, orderedExerciseNames) {
+    const order = orderedExerciseNames || [];
+    const groups = new Map(); // exercise -> its rows, in first-appearance order
+    for (const r of rows) {
+      if (r.sessionId !== sessionId) continue;
+      if (!groups.has(r.exercise)) groups.set(r.exercise, []);
+      groups.get(r.exercise).push(r);
+    }
+    const rank = new Map();
+    order.forEach(function (name, i) { if (!rank.has(name)) rank.set(name, i); });
+    const known = [];
+    const unknown = [];
+    for (const name of groups.keys()) {
+      if (rank.has(name)) known.push(name); else unknown.push(name);
+    }
+    known.sort(function (a, b) { return rank.get(a) - rank.get(b); });
+    const orderedNames = known.concat(unknown);
+    const reordered = [];
+    orderedNames.forEach(function (name) {
+      groups.get(name).forEach(function (r) { reordered.push(r); });
+    });
+    const result = [];
+    let injected = false;
+    for (const r of rows) {
+      if (r.sessionId === sessionId) {
+        if (!injected) { reordered.forEach(function (sr) { result.push(sr); }); injected = true; }
+      } else {
+        result.push(r);
+      }
+    }
+    return result;
+  }
+
   const api = {
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
@@ -107,7 +204,13 @@
     CSV_HEADER: CSV_HEADER,
     splitCSVLine: splitCSVLine,
     parseWorkoutCSV: parseWorkoutCSV,
-    serializeWorkoutCSV: serializeWorkoutCSV
+    serializeWorkoutCSV: serializeWorkoutCSV,
+    combinedDayLoad: combinedDayLoad,
+    sessionsOnDate: sessionsOnDate,
+    rebuildSessionRows: rebuildSessionRows,
+    commitReplaceSession: commitReplaceSession,
+    renameDayInRows: renameDayInRows,
+    reorderSessionExercises: reorderSessionExercises
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
