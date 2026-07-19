@@ -149,8 +149,8 @@ p, li {
   white-space: nowrap;
 }
 
-/* ── App Shell ────────────────────────────────────────────────── */
-.app-header {
+/* ── Shared sub-page header (dashboard / records / library) ───── */
+.page-header {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -159,22 +159,42 @@ p, li {
   padding: var(--space-3) var(--space-4);
   padding-top: max(var(--space-3), env(safe-area-inset-top));
   display: flex;
+  flex-wrap: wrap;                 /* nav drops to its own row on narrow phones */
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
   min-height: var(--tap-min);
 }
 
-.app-header-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
+/* Left back-arrow — mirrors the logger's #btn-back-home, returns to index.html */
+.page-header-back {
+  flex-shrink: 0;
 }
 
-.app-main {
-  padding: var(--space-5) var(--space-4);
+.page-header-title {
+  flex: 1 1 auto;
+  min-width: 0;                    /* lets the title shrink instead of clipping the row */
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-header-actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* Header nav links: visually compact but full 44px tap targets */
+.page-header-actions .btn {
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */
@@ -382,12 +402,6 @@ p, li {
 }
 
 /* ── Home Screen ──────────────────────────────────────────────── */
-.home-screen {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-}
-
 .home-header {
   padding: var(--space-8) var(--space-4) var(--space-6);
   padding-top: max(var(--space-8), env(safe-area-inset-top));
@@ -476,16 +490,6 @@ p, li {
 }
 
 /* ── Session View: Continuous Autosave Layout ─────────────────── */
-.session-screen {
-  display: none;
-  min-height: 100dvh;
-  flex-direction: column;
-}
-
-.session-screen.active {
-  display: flex;
-}
-
 .session-header {
   position: sticky;
   top: 0;
