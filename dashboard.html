@@ -52,13 +52,6 @@
       font-size: 0.875rem;
     }
 
-    /* Workout-day type color in detail header */
-    .day-detail-type[data-day="Legs"]      { color: var(--day-legs); }
-    .day-detail-type[data-day="Chest"]     { color: var(--day-chest); }
-    .day-detail-type[data-day="Back"]      { color: var(--day-back); }
-    .day-detail-type[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .day-detail-type[data-day="Arms"]      { color: var(--day-arms); }
-
     /* Calendar overlay tap-outside close zone */
     .cal-overlay {
       /* clicking the backdrop (outside the sheet) closes it */
@@ -188,7 +181,10 @@ const dash = {
   calMonth:     0,             // 1-indexed
   rows:         [],            // full parsed CSV
   datesWithData: new Set(),    // Set<string> of dates that have rows
-  loaded:       false
+  loaded:       false,
+  dayColors:    {},            // { '<workout day name>': '#hex' } from v2 model
+  editSessionId: null,         // session currently being reordered, or null
+  editOrder:    null           // string[] preview order while editing
 };
 
 /* ── Boot ─────────────────────────────────────────────────────── */
@@ -212,6 +208,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-prev-day').addEventListener('click', () => navigateDay(-1));
   document.getElementById('btn-next-day').addEventListener('click', () => navigateDay(+1));
   document.getElementById('btn-date-label').addEventListener('click', openCalendar);
+
+  // Edit-order interactions (delegated; survives innerHTML re-renders)
+  document.getElementById('detail-region').addEventListener('click', onDetailClick);
 
   // Wire calendar controls
   document.getElementById('cal-close').addEventListener('click', closeCalendar);
@@ -244,13 +243,26 @@ async function loadData() {
   setDetailLoading(true);
 
   try {
-    const raw         = await getRawCSV();
-    dash.rows         = parseCSV(raw);
+    const [rawCSV, dayColors] = await Promise.all([getRawCSV(), loadDayColors()]);
+    dash.rows          = parseWorkoutCSV(rawCSV);
+    dash.dayColors      = dayColors;
     dash.datesWithData = getDatesWithData(dash.rows);
-    dash.loaded       = true;
+    dash.loaded        = true;
     renderDetail();
   } catch (e) {
     setDetailError(e.message);
+  }
+}
+
+// Day colors are optional chrome; a failed/absent model degrades to default text color.
+async function loadDayColors() {
+  try {
+    const model = adaptExercisesModel(JSON.parse(await getRawExercises()));
+    const map = {};
+    for (const d of model.days) map[d.name] = d.color;
+    return map;
+  } catch (e) {
+    return {};
   }
 }
 
@@ -311,17 +323,65 @@ function setDetailError(msg) {
 
 /* ── Render day detail ────────────────────────────────────────── */
 function renderDetail() {
-  const region = document.getElementById('detail-region');
+  renderDayDetail(document.getElementById('detail-region'), dash.rows, dash.currentDate, {
+    dayColors:     dash.dayColors,
+    editSessionId: dash.editSessionId,
+    editOrder:     dash.editOrder
+  });
+}
 
-  // Use the shared renderer from app.js
-  renderDayDetail(region, dash.rows, dash.currentDate);
+/* ── Edit past-day session order ──────────────────────────────── */
+function onDetailClick(e) {
+  const editBtn = e.target.closest('.session-edit-btn');
+  if (editBtn) { enterEditOrder(editBtn.dataset.sessionId); return; }
 
-  // After renderDayDetail writes innerHTML, colour-code the workout type header
-  const typeEl = region.querySelector('.day-detail-type');
-  if (typeEl) {
-    // Extract the day name (strip " Day" suffix added by renderer)
-    const dayName = typeEl.textContent.replace(' Day', '').trim();
-    typeEl.dataset.day = dayName;
+  if (e.target.closest('.edit-order-cancel')) {
+    dash.editSessionId = null; dash.editOrder = null; renderDetail(); return;
+  }
+  if (e.target.closest('.edit-order-save')) { commitEditOrder(); return; }
+
+  const moveBtn = e.target.closest('.ex-move');
+  if (moveBtn && !moveBtn.disabled) {
+    moveExercise(decodeURIComponent(moveBtn.dataset.ex), moveBtn.classList.contains('ex-up') ? -1 : 1);
+  }
+}
+
+function enterEditOrder(sessionId) {
+  const session = sessionsOnDate(dash.rows, dash.currentDate).find(s => s.sessionId === sessionId);
+  if (!session) return;
+  const order = [];
+  for (const r of session.rows) if (order.indexOf(r.exercise) === -1) order.push(r.exercise);
+  dash.editSessionId = sessionId;
+  dash.editOrder = order;
+  renderDetail();
+}
+
+function moveExercise(name, delta) {
+  const o = dash.editOrder;
+  const i = o.indexOf(name), j = i + delta;
+  if (i < 0 || j < 0 || j >= o.length) return;
+  [o[i], o[j]] = [o[j], o[i]];
+  renderDetail();
+}
+
+async function commitEditOrder() {
+  const sessionId = dash.editSessionId;
+  const order = dash.editOrder ? dash.editOrder.slice() : null;
+  if (!sessionId || !order) return;
+  try {
+    showToast('Saving order…');
+    // Re-read fresh so the session-keyed rewrite never clobbers a concurrent edit.
+    const fresh     = parseWorkoutCSV(await getRawCSV());
+    const reordered = reorderSessionExercises(fresh, sessionId, order);
+    await replaceCSVContent(serializeWorkoutCSV(reordered), 'Reorder exercises — ' + dash.currentDate);
+    dash.rows          = reordered;
+    dash.datesWithData = getDatesWithData(dash.rows);
+    dash.editSessionId = null;
+    dash.editOrder     = null;
+    renderDetail();
+    showToast('Order saved', 'success');
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
   }
 }
 
