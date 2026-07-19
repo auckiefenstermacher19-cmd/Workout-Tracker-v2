@@ -722,6 +722,36 @@ p, li {
   }
 }
 
+/* Reorder (up/down) buttons in the card header */
+.exercise-card-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.exercise-card-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .exercise-card-move:not(:disabled):hover {
+    color: var(--text-primary);
+    background: var(--bg-panel);
+  }
+}
+
 .exercise-card-body {
   border-top: 1px solid var(--border-subtle);
   padding: var(--space-3) var(--space-4) var(--space-4);

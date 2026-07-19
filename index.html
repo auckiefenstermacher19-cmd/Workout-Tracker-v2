@@ -350,6 +350,7 @@ function buildExerciseList(exercises, savedData) {
 
   appendAddExerciseControl(list);
 
+  refreshMoveButtonStates();
   recalcWorkoutLoad();
 }
 
@@ -623,6 +624,7 @@ function addExerciseCardToToday(name) {
   }
 
   refreshAddExerciseControl();
+  refreshMoveButtonStates();
   handleInputChange();
   showToast(name + ' added to today\u2019s session');
 }
@@ -645,8 +647,51 @@ function handleRemoveExerciseCard(card) {
   const name = card.dataset.exercise;
   card.remove();
   refreshAddExerciseControl();
+  refreshMoveButtonStates();
   handleInputChange();
   showToast(name + ' removed from today\u2019s session');
+}
+
+/**
+ * moveExerciseCard(card, direction)
+ * Reorders a card up/down within today's session by swapping it with its
+ * adjacent .exercise-card sibling. Only swaps with a node that carries the
+ * .exercise-card class, so a downward move can never cross the trailing
+ * [data-role="add-exercise-control"] node. Session-local; persists via the
+ * handleInputChange() autosave (draft order + CSV row order both follow DOM).
+ */
+function moveExerciseCard(card, direction) {
+  const list = document.getElementById('exercise-list');
+  if (direction === 'up') {
+    const prev = card.previousElementSibling;
+    if (prev && prev.classList.contains('exercise-card')) {
+      list.insertBefore(card, prev);
+    }
+  } else {
+    const next = card.nextElementSibling;
+    if (next && next.classList.contains('exercise-card')) {
+      list.insertBefore(next, card);
+    }
+  }
+  refreshMoveButtonStates();
+  handleInputChange();
+}
+
+/**
+ * refreshMoveButtonStates()
+ * Disables the up-button on the first card and the down-button on the last
+ * card; enables the rest. Call after any structural change (build, add,
+ * remove, move).
+ */
+function refreshMoveButtonStates() {
+  const list = document.getElementById('exercise-list');
+  const cards = list.querySelectorAll('.exercise-card');
+  cards.forEach((card, i) => {
+    const up = card.querySelector('.exercise-card-move-up');
+    const down = card.querySelector('.exercise-card-move-down');
+    if (up) up.disabled = (i === 0);
+    if (down) down.disabled = (i === cards.length - 1);
+  });
 }
 
 /**
@@ -695,6 +740,30 @@ function buildExerciseCard(ex, savedData) {
 
   const headerActions = document.createElement('div');
   headerActions.className = 'exercise-card-header-actions';
+
+  // Reorder controls -- move this exercise up/down within today's session.
+  // Movement is session-local; it never touches exercises.json.
+  const moveUpBtn = document.createElement('button');
+  moveUpBtn.className = 'exercise-card-move exercise-card-move-up';
+  moveUpBtn.type = 'button';
+  moveUpBtn.setAttribute('aria-label', 'Move exercise up');
+  moveUpBtn.textContent = '↑'; // up arrow
+  moveUpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveExerciseCard(card, 'up');
+  });
+  headerActions.appendChild(moveUpBtn);
+
+  const moveDownBtn = document.createElement('button');
+  moveDownBtn.className = 'exercise-card-move exercise-card-move-down';
+  moveDownBtn.type = 'button';
+  moveDownBtn.setAttribute('aria-label', 'Move exercise down');
+  moveDownBtn.textContent = '↓'; // down arrow
+  moveDownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveExerciseCard(card, 'down');
+  });
+  headerActions.appendChild(moveDownBtn);
 
   // Swap dropdown -- lists other exercises assigned to the current day
   const swapSelect = document.createElement('select');
