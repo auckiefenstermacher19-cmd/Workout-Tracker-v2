@@ -906,11 +906,14 @@ function buildExercisesMapFromDOM(sessionEntryEl) {
 
 function serializeSessionForStorage(sessionEntryEl, workoutDay) {
   const exercises = {};
+  const orderNames = [];
   const blocks = sessionEntryEl.querySelectorAll('.exercise-block');
 
   for (const block of blocks) {
     const name = block.dataset.exercise;
     if (!name) continue;
+
+    orderNames.push(name);
 
     const setRows = block.querySelectorAll('.set-row');
     const sets = [];
@@ -927,5 +930,5 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
     exercises[name] = sets;
   }
 
-  return { day: workoutDay, exercises: exercises };
+  return { day: workoutDay, order: dedupeOrder(orderNames), exercises: exercises };
 }
