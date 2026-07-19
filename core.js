@@ -425,6 +425,79 @@
     return out;
   }
 
+  function _requireDay(model, dayId) {
+    var idx = _findDayIndex(model, dayId);
+    if (idx === -1) throw new Error('Unknown day: ' + dayId);
+    return idx;
+  }
+
+  function _normalizeSets(defaultSets) {
+    var n = parseInt(defaultSets, 10);
+    if (isNaN(n) || n < 1) throw new Error('Default sets must be a positive whole number');
+    return n;
+  }
+
+  function addExercise(model, dayId, name, defaultSets) {
+    var idx = _requireDay(model, dayId);
+    var clean = (name || '').trim();
+    if (!clean) throw new Error('Exercise name is required');
+    var sets = _normalizeSets(defaultSets);
+    var dup = model.days[idx].exercises.some(function (e) {
+      return e.name.toLowerCase() === clean.toLowerCase();
+    });
+    if (dup) throw new Error('"' + clean + '" already exists under ' + model.days[idx].name);
+    var next = cloneExercisesModel(model);
+    next.days[idx].exercises.push({ name: clean, defaultSets: sets });
+    return next;
+  }
+
+  function renameExercise(model, dayId, oldName, newName) {
+    var idx = _requireDay(model, dayId);
+    var clean = (newName || '').trim();
+    if (!clean) throw new Error('Exercise name is required');
+    var exs = model.days[idx].exercises;
+    var pos = exs.findIndex(function (e) { return e.name === oldName; });
+    if (pos === -1) throw new Error('Unknown exercise: ' + oldName);
+    var dup = exs.some(function (e, i) {
+      return i !== pos && e.name.toLowerCase() === clean.toLowerCase();
+    });
+    if (dup) throw new Error('"' + clean + '" already exists under ' + model.days[idx].name);
+    var next = cloneExercisesModel(model);
+    next.days[idx].exercises[pos].name = clean;
+    return next;
+  }
+
+  function removeExercise(model, dayId, name) {
+    var idx = _requireDay(model, dayId);
+    var next = cloneExercisesModel(model);
+    next.days[idx].exercises = next.days[idx].exercises.filter(function (e) {
+      return e.name !== name;
+    });
+    return next;
+  }
+
+  function moveExercise(model, dayId, name, delta) {
+    var idx = _requireDay(model, dayId);
+    var pos = model.days[idx].exercises.findIndex(function (e) { return e.name === name; });
+    if (pos === -1) throw new Error('Unknown exercise: ' + name);
+    var next = cloneExercisesModel(model);
+    var target = pos + delta;
+    if (target < 0 || target >= next.days[idx].exercises.length) return next;
+    var moved = next.days[idx].exercises.splice(pos, 1)[0];
+    next.days[idx].exercises.splice(target, 0, moved);
+    return next;
+  }
+
+  function setDefaultSets(model, dayId, name, defaultSets) {
+    var idx = _requireDay(model, dayId);
+    var sets = _normalizeSets(defaultSets);
+    var pos = model.days[idx].exercises.findIndex(function (e) { return e.name === name; });
+    if (pos === -1) throw new Error('Unknown exercise: ' + name);
+    var next = cloneExercisesModel(model);
+    next.days[idx].exercises[pos].defaultSets = sets;
+    return next;
+  }
+
   const api = {
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
@@ -453,7 +526,12 @@
     removeDay: removeDay,
     moveDay: moveDay,
     setDayColor: setDayColor,
-    diffDayRenames: diffDayRenames
+    diffDayRenames: diffDayRenames,
+    addExercise: addExercise,
+    renameExercise: renameExercise,
+    removeExercise: removeExercise,
+    moveExercise: moveExercise,
+    setDefaultSets: setDefaultSets
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
