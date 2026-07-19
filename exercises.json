@@ -1,116 +1,144 @@
 {
-  "Legs": [
+  "version": 2,
+  "days": [
     {
-      "name": "BB Squat",
-      "defaultSets": 4
+      "id": "legs",
+      "name": "Legs",
+      "color": "#c084fc",
+      "exercises": [
+        {
+          "name": "BB Squat",
+          "defaultSets": 4
+        },
+        {
+          "name": "Leg Press",
+          "defaultSets": 3
+        },
+        {
+          "name": "Bulgarian Split Squat",
+          "defaultSets": 3
+        },
+        {
+          "name": "Leg Extension",
+          "defaultSets": 4
+        },
+        {
+          "name": "Front Squat",
+          "defaultSets": 4
+        }
+      ]
     },
     {
-      "name": "Leg Press",
-      "defaultSets": 3
+      "id": "chest",
+      "name": "Chest",
+      "color": "#fb923c",
+      "exercises": [
+        {
+          "name": "Flat Bench",
+          "defaultSets": 4
+        },
+        {
+          "name": "Incline Bench",
+          "defaultSets": 4
+        },
+        {
+          "name": "Peck Flys",
+          "defaultSets": 3
+        },
+        {
+          "name": "Tricep Pushdown",
+          "defaultSets": 3
+        },
+        {
+          "name": "Machine Cheat Press",
+          "defaultSets": 4
+        }
+      ]
     },
     {
-      "name": "Bulgarian Split Squat",
-      "defaultSets": 3
+      "id": "back",
+      "name": "Back",
+      "color": "#38bdf8",
+      "exercises": [
+        {
+          "name": "BB Row",
+          "defaultSets": 4
+        },
+        {
+          "name": "Weighted Pull Ups",
+          "defaultSets": 4
+        },
+        {
+          "name": "Cable Rows",
+          "defaultSets": 3
+        },
+        {
+          "name": "Lat Pull Downs",
+          "defaultSets": 2
+        },
+        {
+          "name": "Cable Curls",
+          "defaultSets": 3
+        }
+      ]
     },
     {
-      "name": "Leg Extension",
-      "defaultSets": 4
+      "id": "shoulders",
+      "name": "Shoulders",
+      "color": "#facc15",
+      "exercises": [
+        {
+          "name": "Shoulder Press",
+          "defaultSets": 4
+        },
+        {
+          "name": "Lateral Raise SuperSet",
+          "defaultSets": 3
+        },
+        {
+          "name": "Rear Delts",
+          "defaultSets": 3
+        },
+        {
+          "name": "BB Shrugs",
+          "defaultSets": 4
+        },
+        {
+          "name": "Cable Lat Raises",
+          "defaultSets": 3
+        }
+      ]
     },
     {
-      "name": "Front Squat",
-      "defaultSets": 4
-    }
-  ],
-  "Chest": [
-    {
-      "name": "Flat Bench",
-      "defaultSets": 4
-    },
-    {
-      "name": "Incline Bench",
-      "defaultSets": 4
-    },
-    {
-      "name": "Peck Flys",
-      "defaultSets": 3
-    },
-    {
-      "name": "Tricep Pushdown",
-      "defaultSets": 3
-    },
-    {
-      "name": "Machine Cheat Press",
-      "defaultSets": 4
-    }
-  ],
-  "Back": [
-    {
-      "name": "BB Row",
-      "defaultSets": 4
-    },
-    {
-      "name": "Weighted Pull Ups",
-      "defaultSets": 4
-    },
-    {
-      "name": "Cable Rows",
-      "defaultSets": 3
-    },
-    {
-      "name": "Lat Pull Downs",
-      "defaultSets": 2
-    },
-    {
-      "name": "Cable Curls",
-      "defaultSets": 3
-    }
-  ],
-  "Shoulders": [
-    {
-      "name": "Shoulder Press",
-      "defaultSets": 4
-    },
-    {
-      "name": "Lateral Raise SuperSet",
-      "defaultSets": 3
-    },
-    {
-      "name": "Rear Delts",
-      "defaultSets": 3
-    },
-    {
-      "name": "BB Shrugs",
-      "defaultSets": 4
-    },
-    {
-      "name": "Cable Lat Raises",
-      "defaultSets": 3
-    }
-  ],
-  "Arms": [
-    {
-      "name": "BB Curl",
-      "defaultSets": 4
-    },
-    {
-      "name": "Skull Crushers",
-      "defaultSets": 4
-    },
-    {
-      "name": "Incline DB Curl",
-      "defaultSets": 3
-    },
-    {
-      "name": "Tricep Pushdown",
-      "defaultSets": 4
-    },
-    {
-      "name": "Hammer Curls",
-      "defaultSets": 3
-    },
-    {
-      "name": "Overhead Cable Ext",
-      "defaultSets": 3
+      "id": "arms",
+      "name": "Arms",
+      "color": "#f472b6",
+      "exercises": [
+        {
+          "name": "BB Curl",
+          "defaultSets": 4
+        },
+        {
+          "name": "Skull Crushers",
+          "defaultSets": 4
+        },
+        {
+          "name": "Incline DB Curl",
+          "defaultSets": 3
+        },
+        {
+          "name": "Tricep Pushdown",
+          "defaultSets": 4
+        },
+        {
+          "name": "Hammer Curls",
+          "defaultSets": 3
+        },
+        {
+          "name": "Overhead Cable Ext",
+          "defaultSets": 3
+        }
+      ]
     }
   ]
 }
