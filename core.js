@@ -335,6 +335,96 @@
     return out.length ? out : defaults;
   }
 
+  var MANAGE_DAY_PALETTE = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#f472b6', '#4ade80', '#f87171', '#a3a3a3'];
+
+  function cloneExercisesModel(model) {
+    return {
+      version: 2,
+      days: (model.days || []).map(function (d) {
+        return {
+          id: d.id,
+          name: d.name,
+          color: d.color,
+          exercises: (d.exercises || []).map(function (e) {
+            return { name: e.name, defaultSets: e.defaultSets };
+          })
+        };
+      })
+    };
+  }
+
+  function _findDayIndex(model, dayId) {
+    return (model.days || []).findIndex(function (d) { return d.id === dayId; });
+  }
+
+  function addDay(model, name, color) {
+    var clean = (name || '').trim();
+    if (!clean) throw new Error('Day name is required');
+    var dup = (model.days || []).some(function (d) {
+      return d.name.toLowerCase() === clean.toLowerCase();
+    });
+    if (dup) throw new Error('A day named "' + clean + '" already exists');
+    var next = cloneExercisesModel(model);
+    var takenIds = next.days.map(function (d) { return d.id; });
+    var hex = (color || '').trim() || MANAGE_DAY_PALETTE[next.days.length % MANAGE_DAY_PALETTE.length];
+    next.days.push({ id: slugifyDayId(clean, takenIds), name: clean, color: hex, exercises: [] });
+    return next;
+  }
+
+  function renameDay(model, dayId, newName) {
+    var clean = (newName || '').trim();
+    if (!clean) throw new Error('Day name is required');
+    var idx = _findDayIndex(model, dayId);
+    if (idx === -1) throw new Error('Unknown day: ' + dayId);
+    var dup = (model.days || []).some(function (d) {
+      return d.id !== dayId && d.name.toLowerCase() === clean.toLowerCase();
+    });
+    if (dup) throw new Error('A day named "' + clean + '" already exists');
+    var next = cloneExercisesModel(model);
+    next.days[idx].name = clean;
+    return next;
+  }
+
+  function removeDay(model, dayId) {
+    var idx = _findDayIndex(model, dayId);
+    if (idx === -1) throw new Error('Unknown day: ' + dayId);
+    var next = cloneExercisesModel(model);
+    next.days.splice(idx, 1);
+    return next;
+  }
+
+  function moveDay(model, dayId, delta) {
+    var idx = _findDayIndex(model, dayId);
+    if (idx === -1) throw new Error('Unknown day: ' + dayId);
+    var next = cloneExercisesModel(model);
+    var target = idx + delta;
+    if (target < 0 || target >= next.days.length) return next;
+    var moved = next.days.splice(idx, 1)[0];
+    next.days.splice(target, 0, moved);
+    return next;
+  }
+
+  function setDayColor(model, dayId, hex) {
+    var idx = _findDayIndex(model, dayId);
+    if (idx === -1) throw new Error('Unknown day: ' + dayId);
+    var clean = (hex || '').trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(clean)) throw new Error('Color must be a #rrggbb hex value');
+    var next = cloneExercisesModel(model);
+    next.days[idx].color = clean;
+    return next;
+  }
+
+  function diffDayRenames(originalModel, currentModel) {
+    var out = [];
+    var origById = {};
+    (originalModel.days || []).forEach(function (d) { origById[d.id] = d.name; });
+    (currentModel.days || []).forEach(function (d) {
+      var was = origById[d.id];
+      if (was !== undefined && was !== d.name) out.push({ oldName: was, newName: d.name });
+    });
+    return out;
+  }
+
   const api = {
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
@@ -356,7 +446,14 @@
     serializeExercisesModel: serializeExercisesModel,
     modelToLegacyMap: modelToLegacyMap,
     dedupeOrder: dedupeOrder,
-    resumeRenderOrder: resumeRenderOrder
+    resumeRenderOrder: resumeRenderOrder,
+    cloneExercisesModel: cloneExercisesModel,
+    addDay: addDay,
+    renameDay: renameDay,
+    removeDay: removeDay,
+    moveDay: moveDay,
+    setDayColor: setDayColor,
+    diffDayRenames: diffDayRenames
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
