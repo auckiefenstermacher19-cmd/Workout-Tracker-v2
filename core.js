@@ -196,6 +196,73 @@
     return result;
   }
 
+  /* ─── Exercises v2 model ─── */
+  const DAY_PRESET_COLORS = {
+    Legs: '#c084fc', Chest: '#fb923c', Back: '#38bdf8', Shoulders: '#facc15', Arms: '#f472b6'
+  };
+  const DAY_FALLBACK_PALETTE = [
+    '#c084fc', '#fb923c', '#38bdf8', '#facc15', '#f472b6',
+    '#34d399', '#f87171', '#a3e635', '#22d3ee', '#e879f9'
+  ];
+
+  function slugifyDayId(name, takenIds) {
+    const taken = takenIds || [];
+    let base = String(name == null ? '' : name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (!base) base = 'day';
+    let id = base;
+    let n = 2;
+    while (taken.indexOf(id) !== -1) { id = base + '-' + n; n++; }
+    return id;
+  }
+
+  // Accepts a v1 object ({Day:[{name,defaultSets}]}) OR an already-v2 object.
+  function adaptExercisesModel(raw) {
+    if (raw && (raw.version === 2 || Array.isArray(raw.days))) {
+      const days = (raw.days || []).map(function (d, i) {
+        return {
+          id: d.id || slugifyDayId(d.name || ('day-' + (i + 1)), []),
+          name: d.name,
+          color: d.color || DAY_FALLBACK_PALETTE[i % DAY_FALLBACK_PALETTE.length],
+          exercises: (d.exercises || []).map(function (e) {
+            return { name: e.name, defaultSets: e.defaultSets };
+          })
+        };
+      });
+      return { version: 2, days: days };
+    }
+    const names = raw ? Object.keys(raw) : [];
+    const takenIds = [];
+    const days = names.map(function (name, i) {
+      const id = slugifyDayId(name, takenIds);
+      takenIds.push(id);
+      const color = DAY_PRESET_COLORS[name] || DAY_FALLBACK_PALETTE[i % DAY_FALLBACK_PALETTE.length];
+      const exercises = (raw[name] || []).map(function (e) {
+        return { name: e.name, defaultSets: e.defaultSets };
+      });
+      return { id: id, name: name, color: color, exercises: exercises };
+    });
+    return { version: 2, days: days };
+  }
+
+  function serializeExercisesModel(model) {
+    return JSON.stringify(model, null, 2) + '\n';
+  }
+
+  // v2 -> legacy {"<dayName>": [{name,defaultSets}]} projection (days order preserved),
+  // so v1-shaped page readers keep working after the migration (controller amendment A).
+  function modelToLegacyMap(model) {
+    const legacy = {};
+    (model && model.days ? model.days : []).forEach(function (d) {
+      legacy[d.name] = (d.exercises || []).map(function (e) {
+        return { name: e.name, defaultSets: e.defaultSets };
+      });
+    });
+    return legacy;
+  }
+
   const api = {
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
@@ -210,7 +277,11 @@
     rebuildSessionRows: rebuildSessionRows,
     commitReplaceSession: commitReplaceSession,
     renameDayInRows: renameDayInRows,
-    reorderSessionExercises: reorderSessionExercises
+    reorderSessionExercises: reorderSessionExercises,
+    slugifyDayId: slugifyDayId,
+    adaptExercisesModel: adaptExercisesModel,
+    serializeExercisesModel: serializeExercisesModel,
+    modelToLegacyMap: modelToLegacyMap
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

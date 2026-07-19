@@ -213,3 +213,51 @@ test('reorderSessionExercises keeps unlisted exercises in original relative orde
   const out = core.reorderSessionExercises(rows, 's', ['C']);
   assert.deepEqual(out.map(function (r) { return r.exercise; }), ['C', 'A', 'B']);
 });
+
+/* ─── Exercises v2 model ─── */
+const V1_FIXTURE = {
+  Legs: [{ name: 'BB Squat', defaultSets: 4 }, { name: 'Leg Press', defaultSets: 3 }],
+  Chest: [{ name: 'Flat Bench', defaultSets: 4 }],
+  'Cardio Blast': [{ name: 'Row', defaultSets: 2 }] // unknown day -> palette fallback + slug
+};
+
+test('slugifyDayId produces lowercase a-z0-9 slugs unique vs takenIds', () => {
+  assert.equal(core.slugifyDayId('Legs', []), 'legs');
+  assert.equal(core.slugifyDayId('Upper Body!', []), 'upper-body');
+  assert.equal(core.slugifyDayId('Legs', ['legs']), 'legs-2');
+  assert.equal(core.slugifyDayId('Legs', ['legs', 'legs-2']), 'legs-3');
+  assert.equal(core.slugifyDayId('***', []), 'day');
+});
+
+test('adaptExercisesModel maps a v1 object to v2 with preset colors and order', () => {
+  const model = core.adaptExercisesModel(V1_FIXTURE);
+  assert.equal(model.version, 2);
+  assert.deepEqual(model.days.map(function (d) { return d.id; }), ['legs', 'chest', 'cardio-blast']);
+  assert.deepEqual(model.days.map(function (d) { return d.name; }), ['Legs', 'Chest', 'Cardio Blast']);
+  assert.equal(model.days[0].color, '#c084fc'); // Legs preset
+  assert.equal(model.days[1].color, '#fb923c'); // Chest preset
+  assert.equal(model.days[2].color, '#38bdf8'); // unknown -> fallback palette by index 2
+  assert.deepEqual(model.days[0].exercises,
+    [{ name: 'BB Squat', defaultSets: 4 }, { name: 'Leg Press', defaultSets: 3 }]);
+});
+
+test('adaptExercisesModel is idempotent for an already-v2 object', () => {
+  const v2 = core.adaptExercisesModel(V1_FIXTURE);
+  assert.deepEqual(core.adaptExercisesModel(v2), v2);
+});
+
+test('serializeExercisesModel emits 2-space pretty JSON that re-adapts equal', () => {
+  const model = core.adaptExercisesModel(V1_FIXTURE);
+  const text = core.serializeExercisesModel(model);
+  assert.ok(text.startsWith('{\n  "version": 2,'));
+  assert.deepEqual(core.adaptExercisesModel(JSON.parse(text)), model);
+});
+
+test('modelToLegacyMap projects a v2 model back to the legacy {day:[...]} shape, preserving order', () => {
+  const model = core.adaptExercisesModel(V1_FIXTURE);
+  const legacy = core.modelToLegacyMap(model);
+  assert.deepEqual(Object.keys(legacy), ['Legs', 'Chest', 'Cardio Blast']);
+  assert.deepEqual(legacy.Legs, [{ name: 'BB Squat', defaultSets: 4 }, { name: 'Leg Press', defaultSets: 3 }]);
+  assert.deepEqual(legacy.Chest, [{ name: 'Flat Bench', defaultSets: 4 }]);
+  assert.deepEqual(legacy['Cardio Blast'], [{ name: 'Row', defaultSets: 2 }]);
+});
