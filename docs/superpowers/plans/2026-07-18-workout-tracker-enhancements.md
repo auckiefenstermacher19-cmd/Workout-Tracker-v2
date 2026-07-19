@@ -21,6 +21,11 @@
 - **Do not modify safe-area/notch handling** — it is already correct (`padding-top: max(var(--space-3), env(safe-area-inset-top))`, `viewport-fit=cover`).
 - **Branch:** `feature/workout-qol-editable-days`. Execute workstreams in order 1→2→3→4→5 (foundation first; each is independently testable/shippable).
 
+### Controller amendments (pre-flight — binding; supersede any contrary Foundation preamble note)
+
+- **A — Keep every page functional after WS1 (applies to Tasks 1.4 & 1.6; supersedes Foundation preamble note 4).** Migrating `exercises.json` to v2 must NOT break the v1-shaped readers (`index.html` `EXERCISES[day]`, `records.html` `exercisesByDay`, `exercise-library.html` `libState.exercises`) before WS5 rewrites them — otherwise WS3/WS4 cannot be verified on the branch, violating "independently testable." Add `modelToLegacyMap(model)` to `core.js` returning `{ "<dayName>": [ {name, defaultSets} ] }` in `days` order, unit-tested. In WS1, have the exercise loaders project the v2 model through `modelToLegacyMap(adaptExercisesModel(raw))` so existing `{day:[…]}` consumers keep working unchanged. WS5 removes the projection when it makes days fully dynamic.
+- **B — Single CSV splitter (applies to Tasks 1.2 & 1.6; supersedes Foundation preamble note 2's "can stay duplicated").** Export `splitCSVLine` from `core.js` as public API and have `app.js`'s `parseRecordsCSV` use the `core.js` version instead of keeping its own copy, so the quote-aware field splitter is defined exactly once.
+
 > **Task numbering:** IDs are `Task <workstream>.<n>` (e.g. Task 1.3). Where an authored task body refers to another task as "Task N", it means the task in the same workstream identified by its parenthetical descriptor.
 
 ---
