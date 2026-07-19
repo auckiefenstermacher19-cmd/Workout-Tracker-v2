@@ -503,6 +503,18 @@ function hasLocalStorage(workoutDay) {
   }
 }
 
+const LS_SID_PREFIX = 'wt_sid_';
+
+function saveSessionId(workoutDay, sessionId) {
+  try { localStorage.setItem(LS_SID_PREFIX + workoutDay, sessionId); } catch (e) {}
+}
+function loadSessionId(workoutDay) {
+  try { return localStorage.getItem(LS_SID_PREFIX + workoutDay) || null; } catch (e) { return null; }
+}
+function clearSessionId(workoutDay) {
+  try { localStorage.removeItem(LS_SID_PREFIX + workoutDay); } catch (e) {}
+}
+
 function setCollapsedState(exerciseKey, isCollapsed) {
   try {
     const all = JSON.parse(localStorage.getItem(LS_COLLAPSE_PREFIX + 'all') || '{}');

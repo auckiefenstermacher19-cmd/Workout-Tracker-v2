@@ -226,6 +226,7 @@ function renderResumeBanners() {
 
 function discardSession(day) {
   clearLocalStorage(day);
+  clearSessionId(day);
   renderResumeBanners();
   showToast(day + ' local draft discarded');
 }
@@ -234,6 +235,20 @@ async function startSession(day, resume) {
   state.currentDay = day;
   state.exercises  = (EXERCISES && EXERCISES[day]) ? EXERCISES[day] : [];
   state.csvLoaded  = false;
+
+  // Stable Session Id for this session's life: reuse the persisted id on resume,
+  // else mint a fresh one so a new session becomes a new CSV block (no overwrite).
+  // takenIds draws from any CSV rows already loaded this page-load (state.csvRows
+  // is populated by loadHistoryAndStreaks and persists across day switches) so a
+  // same-second collision against a real committed session gets a -2 suffix; on a
+  // cold start (no CSV fetched yet) state.csvRows is [] and this is a no-op.
+  let sid = resume ? loadSessionId(day) : null;
+  if (!sid) {
+    const takenIds = state.csvRows.map(r => r.sessionId);
+    sid = makeSessionId(new Date(), takenIds);
+    saveSessionId(day, sid);
+  }
+  state.sessionId = sid;
 
   document.getElementById('session-title').textContent = day;
   const badge = document.getElementById('session-day-badge');
@@ -253,7 +268,8 @@ async function startSession(day, resume) {
     onStatusChange: handleAutosaveStatus,
     getDate: () => todayISO(),
     getWorkoutDay: () => state.currentDay,
-    getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list'))
+    getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list')),
+    getSessionId: () => state.sessionId
   });
 
   loadHistoryAndStreaks(day);
@@ -314,6 +330,7 @@ async function handleCompleteWorkout() {
 
   if (result.ok) {
     clearLocalStorage(state.currentDay);
+    clearSessionId(state.currentDay);
     showToast(state.currentDay + ' workout completed', 'success');
     showScreen('screen-home');
     renderResumeBanners();
