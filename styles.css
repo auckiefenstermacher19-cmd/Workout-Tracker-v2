@@ -1064,26 +1064,6 @@ p, li {
 }
 
 /* ── Dashboard ────────────────────────────────────────────────── */
-.dash-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-base);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: var(--space-3) var(--space-4);
-  padding-top: max(var(--space-3), env(safe-area-inset-top));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--tap-min);
-}
-
-.dash-header-title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 /* Date navigation bar */
 .date-nav {
   display: flex;
