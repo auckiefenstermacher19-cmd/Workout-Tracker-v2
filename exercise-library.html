@@ -23,33 +23,6 @@
       -webkit-overflow-scrolling: touch;
     }
 
-    .lib-header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: var(--bg-base);
-      border-bottom: 1px solid var(--border-subtle);
-      padding: var(--space-3) var(--space-4);
-      padding-top: max(var(--space-3), env(safe-area-inset-top));
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-2);
-      min-height: var(--tap-min);
-    }
-
-    .lib-header-title {
-      font-size: 0.9375rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .lib-header-actions {
-      display: flex;
-      gap: var(--space-2);
-      flex-shrink: 0;
-    }
-
     .lib-body {
       padding: var(--space-5) var(--space-4) var(--space-10);
       display: flex;
@@ -142,12 +115,12 @@
 </head>
 <body>
 
-<div class="lib-header">
-  <div class="lib-header-title">Exercise Library</div>
-  <div class="lib-header-actions">
-    <a href="records.html" class="btn btn-secondary btn-sm">Records</a>
-    <a href="dashboard.html" class="btn btn-secondary btn-sm">Dashboard</a>
-    <a href="index.html" class="btn btn-secondary btn-sm">Log Workout</a>
+<div class="page-header">
+  <a href="index.html" class="btn btn-icon btn-secondary page-header-back" aria-label="Back to logger">&larr;</a>
+  <div class="page-header-title">Exercise Library</div>
+  <div class="page-header-actions">
+    <a href="records.html" class="btn btn-secondary">Records</a>
+    <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
   </div>
 </div>
 
