@@ -198,20 +198,48 @@ function renderResumeBanners() {
     if (hasLocalStorage(day)) banners.push(day);
   }
 
-  if (banners.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
+  container.innerHTML = '';
+  if (banners.length === 0) return;
 
-  container.innerHTML = banners.map(day => (
-    '<div class="resume-banner">' +
-      '<div class="resume-banner-text"><strong>' + day + '</strong> has unsaved local changes</div>' +
-      '<div class="resume-banner-actions">' +
-        '<button class="btn btn-sm btn-ghost" onclick="startSession(\'' + day + '\', true)">Resume</button>' +
-        '<button class="btn btn-sm btn-danger" onclick="discardSession(\'' + day + '\')">Discard</button>' +
-      '</div>' +
-    '</div><div style="height: var(--space-2);"></div>'
-  )).join('');
+  // Build via DOM (not string HTML): the day name is free-text and could contain
+  // ' " & <, which would break an inline onclick and the visible label. textContent +
+  // dataset + addEventListener keep the name literal in every context.
+  for (const day of banners) {
+    const banner = document.createElement('div');
+    banner.className = 'resume-banner';
+
+    const text = document.createElement('div');
+    text.className = 'resume-banner-text';
+    const strong = document.createElement('strong');
+    strong.textContent = day;
+    text.appendChild(strong);
+    text.appendChild(document.createTextNode(' has unsaved local changes'));
+
+    const actions = document.createElement('div');
+    actions.className = 'resume-banner-actions';
+
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'btn btn-sm btn-ghost';
+    resumeBtn.textContent = 'Resume';
+    resumeBtn.dataset.day = day;
+    resumeBtn.addEventListener('click', () => startSession(day, true));
+
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'btn btn-sm btn-danger';
+    discardBtn.textContent = 'Discard';
+    discardBtn.dataset.day = day;
+    discardBtn.addEventListener('click', () => discardSession(day));
+
+    actions.appendChild(resumeBtn);
+    actions.appendChild(discardBtn);
+    banner.appendChild(text);
+    banner.appendChild(actions);
+    container.appendChild(banner);
+
+    const spacer = document.createElement('div');
+    spacer.style.height = 'var(--space-2)';
+    container.appendChild(spacer);
+  }
 }
 
 function discardSession(day) {

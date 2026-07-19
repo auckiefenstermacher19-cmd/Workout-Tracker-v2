@@ -44,16 +44,28 @@
   const CSV_HEADER =
     'Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workout Load,Session Id';
 
+  // Quote a single CSV field per RFC-4180: wrap in double-quotes and double any
+  // embedded quote when the value contains a comma, quote, CR or LF. Pure — no IO.
+  function csvField(v) {
+    v = String(v == null ? '' : v);
+    return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+
   // Quote-aware single-line splitter. Exported (amendment B) so app.js's
   // parseRecordsCSV can share this implementation instead of duplicating it.
+  // Collapses an escaped "" pair inside a quoted field back to a literal " so a
+  // name like Bench "Press" survives a serialize→parse round-trip. Stays tolerant
+  // of the existing unquoted data (which contains no quotes at all).
   function splitCSVLine(line) {
     const result = [];
     let current = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '"') inQuotes = !inQuotes;
-      else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; } // "" → literal "
+        else inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
       else current += ch;
     }
     result.push(current);
@@ -94,7 +106,7 @@
       return [
         r.date, r.workoutDay, r.exercise, r.setNumber,
         r.weight, r.reps, r.load, r.exerciseLoad, r.totalWorkoutLoad, sid
-      ].join(',');
+      ].map(csvField).join(',');
     });
     return [CSV_HEADER].concat(lines).join('\n') + '\n';
   }
@@ -176,6 +188,19 @@
   function renameDayInRows(rows, oldName, newName) {
     return rows.map(function (r) {
       return r.workoutDay === oldName ? Object.assign({}, r, { workoutDay: newName }) : r;
+    });
+  }
+
+  // Apply a whole batch of day renames in ONE pass via an original→final map, so a
+  // chained rename (Legs→Chest then Chest→Push) never re-renames rows already
+  // touched earlier in the batch. `renames` is [{oldName, newName}, …] (diffDayRenames
+  // shape). Each row is matched against its ORIGINAL workoutDay only. Pure — no IO.
+  function renameDaysInRows(rows, renames) {
+    const map = new Map((renames || []).map(function (r) { return [r.oldName, r.newName]; }));
+    return rows.map(function (r) {
+      return map.has(r.workoutDay)
+        ? Object.assign({}, r, { workoutDay: map.get(r.workoutDay) })
+        : r;
     });
   }
 
@@ -504,6 +529,7 @@
     calcWorkoutLoad: calcWorkoutLoad,
     makeSessionId: makeSessionId,
     CSV_HEADER: CSV_HEADER,
+    csvField: csvField,
     splitCSVLine: splitCSVLine,
     parseWorkoutCSV: parseWorkoutCSV,
     serializeWorkoutCSV: serializeWorkoutCSV,
@@ -513,6 +539,7 @@
     rebuildSessionRows: rebuildSessionRows,
     commitReplaceSession: commitReplaceSession,
     renameDayInRows: renameDayInRows,
+    renameDaysInRows: renameDaysInRows,
     reorderSessionExercises: reorderSessionExercises,
     slugifyDayId: slugifyDayId,
     adaptExercisesModel: adaptExercisesModel,

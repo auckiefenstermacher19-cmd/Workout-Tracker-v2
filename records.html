@@ -165,7 +165,7 @@ function renderRecords() {
       if (!hasAnyRecords) continue;
 
       html += '<div class="records-day-section">';
-      html += '<div class="records-day-heading" data-day="' + day + '">' + day + '</div>';
+      html += '<div class="records-day-heading" data-day="' + escapeHtml(day) + '">' + escapeHtml(day) + '</div>';
 
       for (const ex of dayExercises) {
         if (!byExercise.has(ex.name)) continue;
@@ -211,11 +211,23 @@ function renderRecords() {
   });
 }
 
+// Escape the 5 HTML-significant chars before interpolating user-editable day/
+// exercise names into innerHTML (incl. the data-day attribute). & first so
+// entities aren't double-escaped. The browser decodes it back for dataset reads.
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderExerciseRecordCard(exerciseName, recs) {
   const sorted = recs.slice().sort((a, b) => a.repCount - b.repCount);
 
   let html = '<div class="record-card">';
-  html += '<div class="record-card-header"><span class="record-card-name">' + exerciseName + '</span></div>';
+  html += '<div class="record-card-header"><span class="record-card-name">' + escapeHtml(exerciseName) + '</span></div>';
   html += '<div class="record-table">';
   html += '<div class="record-row header-row"><span>Reps</span><span>Best weight</span><span>Date</span></div>';
 

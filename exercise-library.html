@@ -362,7 +362,9 @@ async function renameDaysInHistoryWithRetry(renames) {
   async function attempt() {
     const { content, sha } = await getCSVFile();
     let rows = parseWorkoutCSV(content);
-    for (const r of renames) rows = renameDayInRows(rows, r.oldName, r.newName);
+    // Single pass keyed on each row's ORIGINAL day so a chained rename in one save
+    // (e.g. Legs→Chest, Chest→Push) can't re-rename already-touched rows.
+    rows = renameDaysInRows(rows, renames);
     return putToWorker('/csv', serializeWorkoutCSV(rows), sha, 'Rename workout day(s) in history (Manage)');
   }
   try {

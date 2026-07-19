@@ -261,3 +261,59 @@ test('modelToLegacyMap projects a v2 model back to the legacy {day:[...]} shape,
   assert.deepEqual(legacy.Chest, [{ name: 'Flat Bench', defaultSets: 4 }]);
   assert.deepEqual(legacy['Cardio Blast'], [{ name: 'Row', defaultSets: 2 }]);
 });
+
+/* ─── C1: quote-aware CSV serialize↔parse round-trips ─── */
+
+test('csvField quotes only when needed and doubles embedded quotes', () => {
+  assert.equal(core.csvField('BB Squat'), 'BB Squat');           // plain: untouched
+  assert.equal(core.csvField('Squat, Paused'), '"Squat, Paused"'); // comma → wrapped
+  assert.equal(core.csvField('Bench "Press"'), '"Bench ""Press"""'); // quote → doubled + wrapped
+  assert.equal(core.csvField('line\nbreak'), '"line\nbreak"');    // newline → wrapped
+  assert.equal(core.csvField(null), '');
+});
+
+test('serializeWorkoutCSV↔parseWorkoutCSV survive comma & quote in day/exercise names (all 10 fields)', () => {
+  const rows = [
+    { date: '2026-07-18', workoutDay: 'Legs, Heavy', exercise: 'Squat, Paused', setNumber: '1',
+      weight: 225, reps: 5, load: 1125, exerciseLoad: 2250, totalWorkoutLoad: 5000, sessionId: '2026-07-18-101503' },
+    { date: '2026-07-18', workoutDay: 'Legs, Heavy', exercise: 'Bench "Press"', setNumber: '2A',
+      weight: 135, reps: 8, load: 1080, exerciseLoad: 1080, totalWorkoutLoad: 5000, sessionId: '2026-07-18-101503' }
+  ];
+  const parsed = core.parseWorkoutCSV(core.serializeWorkoutCSV(rows));
+  assert.deepEqual(parsed, rows); // every one of the 10 fields survives intact
+  // Explicit spot-checks the reviewer named: the corrupting field plus Session Id/weight/reps/load.
+  assert.equal(parsed[0].exercise, 'Squat, Paused');
+  assert.equal(parsed[0].workoutDay, 'Legs, Heavy');
+  assert.equal(parsed[0].sessionId, '2026-07-18-101503');
+  assert.equal(parsed[0].weight, 225);
+  assert.equal(parsed[0].reps, 5);
+  assert.equal(parsed[0].load, 1125);
+  assert.equal(parsed[1].exercise, 'Bench "Press"');
+});
+
+test('serializeRecordsCSV↔parseRecordsCSV (app.js) survive a comma/quote in the exercise name', () => {
+  global.csvField = core.csvField;       // app.js resolves these as core globals in the browser
+  global.splitCSVLine = core.splitCSVLine;
+  const app = require('../app.js');
+  const records = [
+    { exercise: 'Squat, Paused', repCount: 5, weight: 225, dateAchieved: '2026-07-18' },
+    { exercise: 'Bench "Press"', repCount: 3, weight: 135, dateAchieved: '2026-07-17' }
+  ];
+  const parsed = app.parseRecordsCSV(app.serializeRecordsCSV(records));
+  assert.deepEqual(parsed, records);
+});
+
+/* ─── I2: chained day rename must not cascade ─── */
+
+test('renameDaysInRows applies a chained rename in ONE pass (Legs→Chest, Chest→Push, no cascade)', () => {
+  const rows = [
+    { date: '2026-07-01', workoutDay: 'Legs',  exercise: 'A', setNumber: '1', weight: 1, reps: 1, load: 1, exerciseLoad: 1, totalWorkoutLoad: 1, sessionId: 's1' },
+    { date: '2026-07-02', workoutDay: 'Chest', exercise: 'B', setNumber: '1', weight: 1, reps: 1, load: 1, exerciseLoad: 1, totalWorkoutLoad: 1, sessionId: 's2' }
+  ];
+  const renames = [{ oldName: 'Legs', newName: 'Chest' }, { oldName: 'Chest', newName: 'Push' }];
+  const out = core.renameDaysInRows(rows, renames);
+  assert.equal(out[0].workoutDay, 'Chest'); // original-Legs rows → Chest (NOT re-renamed to Push)
+  assert.equal(out[1].workoutDay, 'Push');  // original-Chest rows → Push
+  assert.equal(rows[0].workoutDay, 'Legs'); // input not mutated
+  assert.equal(rows[1].workoutDay, 'Chest');
+});

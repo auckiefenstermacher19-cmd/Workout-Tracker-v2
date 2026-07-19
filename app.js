@@ -225,7 +225,9 @@ function serializeCSV(rows) {
 
 function serializeRecordsCSV(records) {
   const header = 'Exercise,RepCount,Weight,DateAchieved';
-  const lines = records.map(r => [r.exercise, r.repCount, r.weight, r.dateAchieved].join(','));
+  // csvField (from core.js, loaded first) quotes any field with a comma/quote so an
+  // exercise like `Squat, Paused` can't shift columns and corrupt the file.
+  const lines = records.map(r => [r.exercise, r.repCount, r.weight, r.dateAchieved].map(csvField).join(','));
   return [header].concat(lines).join('\n') + '\n';
 }
 
@@ -578,6 +580,17 @@ function formatWeight(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+// Escape the 5 HTML-significant chars before interpolating user-editable names
+// (day types, exercise names) into innerHTML. & first so entities aren't double-escaped.
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderDayDetail(containerEl, rows, dateStr, opts) {
   opts = opts || {};
   const dayColors     = opts.dayColors || {};
@@ -605,7 +618,7 @@ function renderDayDetail(containerEl, rows, dateStr, opts) {
 
   // Combined day header: colored multi-type chips + date.
   html += '<div class="day-detail-header"><div class="day-detail-type">';
-  html += dayTypes.map(name => '<span class="day-type-chip"' + colorAttr(name) + '>' + name + '</span>')
+  html += dayTypes.map(name => '<span class="day-type-chip"' + colorAttr(name) + '>' + escapeHtml(name) + '</span>')
                   .join('<span class="day-type-sep"> + </span>');
   html += '</div><div class="day-detail-date">' + displayDate + '</div></div>';
 
@@ -635,7 +648,7 @@ function renderDayDetail(containerEl, rows, dateStr, opts) {
     html += '<div class="detail-session" data-session-id="' + session.sessionId + '">';
     html += '<div class="detail-session-header">';
     if (multi) {
-      html += '<span class="detail-session-type"' + colorAttr(session.workoutDay) + '>' + session.workoutDay + '</span>';
+      html += '<span class="detail-session-type"' + colorAttr(session.workoutDay) + '>' + escapeHtml(session.workoutDay) + '</span>';
       html += '<span class="detail-session-subtotal">' + formatLoad(sessionSubtotal) + '</span>';
     }
     if (editing) {
@@ -654,7 +667,7 @@ function renderDayDetail(containerEl, rows, dateStr, opts) {
       const totalReps  = sets.reduce((s, r) => s + r.reps, 0);
 
       html += '<div class="detail-exercise"><div class="detail-exercise-head">';
-      html += '<div class="detail-exercise-name">' + exerciseName + '</div>';
+      html += '<div class="detail-exercise-name">' + escapeHtml(exerciseName) + '</div>';
       if (editing) {
         const up   = idx === 0 ? ' disabled' : '';
         const down = idx === exNames.length - 1 ? ' disabled' : '';
@@ -952,4 +965,11 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
   }
 
   return { day: workoutDay, order: dedupeOrder(orderNames), exercises: exercises };
+}
+
+// Node-only export for unit tests. In the browser this block is skipped and every
+// function above stays a plain global (core.js globals like csvField resolve at call
+// time exactly as before). No behavior change for the PWA.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { serializeRecordsCSV, parseRecordsCSV, escapeHtml };
 }
