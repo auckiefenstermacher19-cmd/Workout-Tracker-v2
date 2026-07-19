@@ -33,13 +33,6 @@
   --color-error:    #f08080;
   --color-success:  #80d4a0;
 
-  /* Workout day accent dots (subtle, sidebar only) */
-  --day-legs:       #c084fc;
-  --day-chest:      #fb923c;
-  --day-back:       #38bdf8;
-  --day-shoulders:  #facc15;
-  --day-arms:       #f472b6;
-
   /* Spacing */
   --space-1:  4px;
   --space-2:  8px;
@@ -149,8 +142,8 @@ p, li {
   white-space: nowrap;
 }
 
-/* ── App Shell ────────────────────────────────────────────────── */
-.app-header {
+/* ── Shared sub-page header (dashboard / records / library) ───── */
+.page-header {
   position: sticky;
   top: 0;
   z-index: 100;
@@ -159,22 +152,42 @@ p, li {
   padding: var(--space-3) var(--space-4);
   padding-top: max(var(--space-3), env(safe-area-inset-top));
   display: flex;
+  flex-wrap: wrap;                 /* nav drops to its own row on narrow phones */
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
   min-height: var(--tap-min);
 }
 
-.app-header-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
+/* Left back-arrow — mirrors the logger's #btn-back-home, returns to index.html */
+.page-header-back {
+  flex-shrink: 0;
 }
 
-.app-main {
-  padding: var(--space-5) var(--space-4);
+.page-header-title {
+  flex: 1 1 auto;
+  min-width: 0;                    /* lets the title shrink instead of clipping the row */
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-header-actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* Header nav links: visually compact but full 44px tap targets */
+.page-header-actions .btn {
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  border-radius: var(--radius-sm);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */
@@ -382,12 +395,6 @@ p, li {
 }
 
 /* ── Home Screen ──────────────────────────────────────────────── */
-.home-screen {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-}
-
 .home-header {
   padding: var(--space-8) var(--space-4) var(--space-6);
   padding-top: max(var(--space-8), env(safe-area-inset-top));
@@ -452,13 +459,8 @@ p, li {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: var(--day-color, var(--text-muted));
 }
-
-.day-btn[data-day="Legs"]      .day-dot { background: var(--day-legs); }
-.day-btn[data-day="Chest"]     .day-dot { background: var(--day-chest); }
-.day-btn[data-day="Back"]      .day-dot { background: var(--day-back); }
-.day-btn[data-day="Shoulders"] .day-dot { background: var(--day-shoulders); }
-.day-btn[data-day="Arms"]      .day-dot { background: var(--day-arms); }
 
 .day-btn-label {
   flex: 1;
@@ -476,16 +478,6 @@ p, li {
 }
 
 /* ── Session View: Continuous Autosave Layout ─────────────────── */
-.session-screen {
-  display: none;
-  min-height: 100dvh;
-  flex-direction: column;
-}
-
-.session-screen.active {
-  display: flex;
-}
-
 .session-header {
   position: sticky;
   top: 0;
@@ -516,7 +508,7 @@ p, li {
   border-radius: var(--radius-xl);
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--day-color, var(--text-secondary));
 }
 
 /* Global save-status pill, lives in the sticky header */
@@ -715,6 +707,36 @@ p, li {
   .exercise-card-remove:hover {
     color: var(--color-error);
     background: rgba(240, 128, 128, 0.1);
+  }
+}
+
+/* Reorder (up/down) buttons in the card header */
+.exercise-card-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.exercise-card-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .exercise-card-move:not(:disabled):hover {
+    color: var(--text-primary);
+    background: var(--bg-panel);
   }
 }
 
@@ -1060,26 +1082,6 @@ p, li {
 }
 
 /* ── Dashboard ────────────────────────────────────────────────── */
-.dash-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-base);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: var(--space-3) var(--space-4);
-  padding-top: max(var(--space-3), env(safe-area-inset-top));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--tap-min);
-}
-
-.dash-header-title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 /* Date navigation bar */
 .date-nav {
   display: flex;
@@ -1283,6 +1285,67 @@ p, li {
   color: var(--text-secondary);
 }
 
+/* ── Dashboard: multi-type header + session sub-groups ─────────── */
+.day-type-chip { color: var(--day-color, var(--text-primary)); }
+.day-type-sep  { color: var(--text-muted); font-weight: 600; }
+
+.detail-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.detail-session-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detail-session-type {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--day-color, var(--text-primary));
+}
+
+.detail-session-subtotal {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-volume);
+}
+
+/* Push the Edit-order / Cancel+Save controls to the trailing edge. */
+.session-edit-btn,
+.edit-order-actions { margin-left: auto; }
+.edit-order-actions { display: flex; gap: var(--space-2); }
+
+/* Exercise header row carries the reorder controls while editing. */
+.detail-exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ex-reorder { display: inline-flex; gap: var(--space-1); }
+
+.ex-move {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.ex-move:disabled { opacity: 0.35; cursor: default; }
+.ex-move:active:not(:disabled) { background: var(--bg-card); }
 
 /* ── Calendar Popup ───────────────────────────────────────────── */
 .cal-overlay {
@@ -1468,33 +1531,6 @@ p, li {
 }
 
 /* ── Records Dashboard ─────────────────────────────────────────── */
-.records-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-base);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: var(--space-3) var(--space-4);
-  padding-top: max(var(--space-3), env(safe-area-inset-top));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: var(--tap-min);
-}
-
-.records-header-title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.records-header-actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
 .records-body {
   padding: var(--space-5) var(--space-4) var(--space-10);
   display: flex;

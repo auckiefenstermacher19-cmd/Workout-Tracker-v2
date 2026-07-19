@@ -39,11 +39,6 @@
       flex-shrink: 0;
     }
 
-    .session-day-badge[data-day="Legs"]      { color: var(--day-legs); }
-    .session-day-badge[data-day="Chest"]     { color: var(--day-chest); }
-    .session-day-badge[data-day="Back"]      { color: var(--day-back); }
-    .session-day-badge[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .session-day-badge[data-day="Arms"]      { color: var(--day-arms); }
   </style>
 </head>
 <body>
@@ -59,33 +54,7 @@
 
   <div style="height: var(--space-4);"></div>
 
-  <div class="day-grid" id="day-grid">
-    <button class="day-btn" data-day="Legs">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Legs</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Chest">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Chest</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Back">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Back</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Shoulders">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Shoulders</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Arms">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Arms</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-  </div>
+  <div class="day-grid" id="day-grid"></div>
 
   <div class="home-footer" style="display:flex; gap: var(--space-3); flex-wrap: wrap; justify-content:center;">
     <a href="dashboard.html" class="btn btn-ghost">View Dashboard &rarr;</a>
@@ -123,6 +92,7 @@
 
 
 <script src="config.js"></script>
+<script src="core.js"></script>
 <script src="app.js"></script>
 <script>
 'use strict';
@@ -136,6 +106,7 @@ const state = {
 };
 
 let EXERCISES = null;
+let DAYS_MODEL = [];
 let autosave  = null;
 
 function showScreen(id) {
@@ -159,12 +130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   document.getElementById('home-date-label').textContent = formatDisplayDate(todayISO());
-  renderResumeBanners();
   await loadExercises();
-
-  document.querySelectorAll('.day-btn').forEach(btn => {
-    btn.addEventListener('click', () => startSession(btn.dataset.day));
-  });
+  renderResumeBanners();
 
   document.getElementById('btn-back-home').addEventListener('click', () => {
     if (autosave) autosave.forceFlush();
@@ -191,41 +158,93 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadExercises() {
   try {
-    const raw = await getRawExercises();
-    EXERCISES = JSON.parse(raw);
+    const model = adaptExercisesModel(JSON.parse(await getRawExercises()));
+    DAYS_MODEL = model.days;
+    DAY_ORDER = model.days.map(d => d.name);
+    EXERCISES = modelToLegacyMap(model);
   } catch (e) {
     showToast('Could not load exercise library', 'error', 4000);
+    DAYS_MODEL = [];
+    DAY_ORDER = [];
     EXERCISES = {};
+  }
+  renderDayButtons();
+}
+
+function renderDayButtons() {
+  const grid = document.getElementById('day-grid');
+  grid.innerHTML = '';
+  for (const day of DAYS_MODEL) {
+    const btn = document.createElement('button');
+    btn.className = 'day-btn';
+    btn.dataset.day = day.name;
+    applyDayColor(btn, day.color);
+    btn.innerHTML =
+      '<span class="day-dot"></span>' +
+      '<span class="day-btn-label"></span>' +
+      '<span class="day-btn-arrow">&rsaquo;</span>';
+    btn.querySelector('.day-btn-label').textContent = day.name;
+    btn.addEventListener('click', () => startSession(day.name));
+    grid.appendChild(btn);
   }
 }
 
 function renderResumeBanners() {
   const container = document.getElementById('resume-banners');
-  const days = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+  const days = DAY_ORDER;
   const banners = [];
 
   for (const day of days) {
     if (hasLocalStorage(day)) banners.push(day);
   }
 
-  if (banners.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
+  container.innerHTML = '';
+  if (banners.length === 0) return;
 
-  container.innerHTML = banners.map(day => (
-    '<div class="resume-banner">' +
-      '<div class="resume-banner-text"><strong>' + day + '</strong> has unsaved local changes</div>' +
-      '<div class="resume-banner-actions">' +
-        '<button class="btn btn-sm btn-ghost" onclick="startSession(\'' + day + '\', true)">Resume</button>' +
-        '<button class="btn btn-sm btn-danger" onclick="discardSession(\'' + day + '\')">Discard</button>' +
-      '</div>' +
-    '</div><div style="height: var(--space-2);"></div>'
-  )).join('');
+  // Build via DOM (not string HTML): the day name is free-text and could contain
+  // ' " & <, which would break an inline onclick and the visible label. textContent +
+  // dataset + addEventListener keep the name literal in every context.
+  for (const day of banners) {
+    const banner = document.createElement('div');
+    banner.className = 'resume-banner';
+
+    const text = document.createElement('div');
+    text.className = 'resume-banner-text';
+    const strong = document.createElement('strong');
+    strong.textContent = day;
+    text.appendChild(strong);
+    text.appendChild(document.createTextNode(' has unsaved local changes'));
+
+    const actions = document.createElement('div');
+    actions.className = 'resume-banner-actions';
+
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'btn btn-sm btn-ghost';
+    resumeBtn.textContent = 'Resume';
+    resumeBtn.dataset.day = day;
+    resumeBtn.addEventListener('click', () => startSession(day, true));
+
+    const discardBtn = document.createElement('button');
+    discardBtn.className = 'btn btn-sm btn-danger';
+    discardBtn.textContent = 'Discard';
+    discardBtn.dataset.day = day;
+    discardBtn.addEventListener('click', () => discardSession(day));
+
+    actions.appendChild(resumeBtn);
+    actions.appendChild(discardBtn);
+    banner.appendChild(text);
+    banner.appendChild(actions);
+    container.appendChild(banner);
+
+    const spacer = document.createElement('div');
+    spacer.style.height = 'var(--space-2)';
+    container.appendChild(spacer);
+  }
 }
 
 function discardSession(day) {
   clearLocalStorage(day);
+  clearSessionId(day);
   renderResumeBanners();
   showToast(day + ' local draft discarded');
 }
@@ -235,10 +254,26 @@ async function startSession(day, resume) {
   state.exercises  = (EXERCISES && EXERCISES[day]) ? EXERCISES[day] : [];
   state.csvLoaded  = false;
 
+  // Stable Session Id for this session's life: reuse the persisted id on resume,
+  // else mint a fresh one so a new session becomes a new CSV block (no overwrite).
+  // takenIds draws from any CSV rows already loaded this page-load (state.csvRows
+  // is populated by loadHistoryAndStreaks and persists across day switches) so a
+  // same-second collision against a real committed session gets a -2 suffix; on a
+  // cold start (no CSV fetched yet) state.csvRows is [] and this is a no-op.
+  let sid = resume ? loadSessionId(day) : null;
+  if (!sid) {
+    const takenIds = state.csvRows.map(r => r.sessionId);
+    sid = makeSessionId(new Date(), takenIds);
+    saveSessionId(day, sid);
+  }
+  state.sessionId = sid;
+
   document.getElementById('session-title').textContent = day;
   const badge = document.getElementById('session-day-badge');
   badge.textContent = day;
   badge.dataset.day = day;
+  const dayModel = DAYS_MODEL.find(d => d.name === day);
+  applyDayColor(badge, dayModel ? dayModel.color : null);
 
   setSaveStatus('idle', 'No changes');
 
@@ -253,7 +288,8 @@ async function startSession(day, resume) {
     onStatusChange: handleAutosaveStatus,
     getDate: () => todayISO(),
     getWorkoutDay: () => state.currentDay,
-    getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list'))
+    getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list')),
+    getSessionId: () => state.sessionId
   });
 
   loadHistoryAndStreaks(day);
@@ -314,6 +350,7 @@ async function handleCompleteWorkout() {
 
   if (result.ok) {
     clearLocalStorage(state.currentDay);
+    clearSessionId(state.currentDay);
     showToast(state.currentDay + ' workout completed', 'success');
     showScreen('screen-home');
     renderResumeBanners();
@@ -326,13 +363,22 @@ function buildExerciseList(exercises, savedData) {
   const list = document.getElementById('exercise-list');
   list.innerHTML = '';
 
-  for (const ex of exercises) {
-    const card = buildExerciseCard(ex, savedData);
+  const defaultNames = exercises.map(e => e.name);
+  const defByName = new Map(exercises.map(e => [e.name, e]));
+
+  // On resume, render in the draft's saved order (authoritative) and rescue
+  // added-but-non-default exercises; otherwise use the day's default order.
+  const order = savedData ? resumeRenderOrder(defaultNames, savedData) : defaultNames;
+
+  for (const name of order) {
+    const def = defByName.get(name) || findExerciseDef(name) || { name: name, defaultSets: 3 };
+    const card = buildExerciseCard(def, savedData);
     list.appendChild(card);
   }
 
   appendAddExerciseControl(list);
 
+  refreshMoveButtonStates();
   recalcWorkoutLoad();
 }
 
@@ -377,7 +423,7 @@ function appendAddExerciseControl(list) {
  * Canonical day ordering used everywhere a cross-day list needs to
  * be grouped predictably (dropdowns, etc.).
  */
-const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+let DAY_ORDER = [];
 
 /**
  * getDayExerciseDefs()
@@ -606,6 +652,7 @@ function addExerciseCardToToday(name) {
   }
 
   refreshAddExerciseControl();
+  refreshMoveButtonStates();
   handleInputChange();
   showToast(name + ' added to today\u2019s session');
 }
@@ -628,8 +675,51 @@ function handleRemoveExerciseCard(card) {
   const name = card.dataset.exercise;
   card.remove();
   refreshAddExerciseControl();
+  refreshMoveButtonStates();
   handleInputChange();
   showToast(name + ' removed from today\u2019s session');
+}
+
+/**
+ * moveExerciseCard(card, direction)
+ * Reorders a card up/down within today's session by swapping it with its
+ * adjacent .exercise-card sibling. Only swaps with a node that carries the
+ * .exercise-card class, so a downward move can never cross the trailing
+ * [data-role="add-exercise-control"] node. Session-local; persists via the
+ * handleInputChange() autosave (draft order + CSV row order both follow DOM).
+ */
+function moveExerciseCard(card, direction) {
+  const list = document.getElementById('exercise-list');
+  if (direction === 'up') {
+    const prev = card.previousElementSibling;
+    if (prev && prev.classList.contains('exercise-card')) {
+      list.insertBefore(card, prev);
+    }
+  } else {
+    const next = card.nextElementSibling;
+    if (next && next.classList.contains('exercise-card')) {
+      list.insertBefore(next, card);
+    }
+  }
+  refreshMoveButtonStates();
+  handleInputChange();
+}
+
+/**
+ * refreshMoveButtonStates()
+ * Disables the up-button on the first card and the down-button on the last
+ * card; enables the rest. Call after any structural change (build, add,
+ * remove, move).
+ */
+function refreshMoveButtonStates() {
+  const list = document.getElementById('exercise-list');
+  const cards = list.querySelectorAll('.exercise-card');
+  cards.forEach((card, i) => {
+    const up = card.querySelector('.exercise-card-move-up');
+    const down = card.querySelector('.exercise-card-move-down');
+    if (up) up.disabled = (i === 0);
+    if (down) down.disabled = (i === cards.length - 1);
+  });
 }
 
 /**
@@ -678,6 +768,30 @@ function buildExerciseCard(ex, savedData) {
 
   const headerActions = document.createElement('div');
   headerActions.className = 'exercise-card-header-actions';
+
+  // Reorder controls -- move this exercise up/down within today's session.
+  // Movement is session-local; it never touches exercises.json.
+  const moveUpBtn = document.createElement('button');
+  moveUpBtn.className = 'exercise-card-move exercise-card-move-up';
+  moveUpBtn.type = 'button';
+  moveUpBtn.setAttribute('aria-label', 'Move exercise up');
+  moveUpBtn.textContent = '↑'; // up arrow
+  moveUpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveExerciseCard(card, 'up');
+  });
+  headerActions.appendChild(moveUpBtn);
+
+  const moveDownBtn = document.createElement('button');
+  moveDownBtn.className = 'exercise-card-move exercise-card-move-down';
+  moveDownBtn.type = 'button';
+  moveDownBtn.setAttribute('aria-label', 'Move exercise down');
+  moveDownBtn.textContent = '↓'; // down arrow
+  moveDownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    moveExerciseCard(card, 'down');
+  });
+  headerActions.appendChild(moveDownBtn);
 
   // Swap dropdown -- lists other exercises assigned to the current day
   const swapSelect = document.createElement('select');

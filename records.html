@@ -38,23 +38,18 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
       padding: var(--space-2) 0;
-      color: var(--text-secondary);
+      color: var(--day-color, var(--text-secondary));
     }
-    .records-day-heading[data-day="Legs"]      { color: var(--day-legs); }
-    .records-day-heading[data-day="Chest"]     { color: var(--day-chest); }
-    .records-day-heading[data-day="Back"]      { color: var(--day-back); }
-    .records-day-heading[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .records-day-heading[data-day="Arms"]      { color: var(--day-arms); }
   </style>
 </head>
 <body>
 
-<div class="records-header">
-  <div class="records-header-title">Records</div>
-  <div class="records-header-actions">
-    <a href="exercise-library.html" class="btn btn-secondary btn-sm">Library</a>
-    <a href="dashboard.html" class="btn btn-secondary btn-sm">Dashboard</a>
-    <a href="index.html" class="btn btn-secondary btn-sm">Log Workout</a>
+<div class="page-header">
+  <a href="index.html" class="btn btn-icon btn-secondary page-header-back" aria-label="Back to logger">&larr;</a>
+  <div class="page-header-title">Records</div>
+  <div class="page-header-actions">
+    <a href="exercise-library.html" class="btn btn-secondary">Library</a>
+    <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
   </div>
 </div>
 
@@ -66,6 +61,7 @@
 </div>
 
 <script src="config.js"></script>
+<script src="core.js"></script>
 <script src="app.js"></script>
 <script>
 'use strict';
@@ -73,10 +69,11 @@
 const recState = {
   records: [],
   loaded: false,
-  exercisesByDay: null  // populated from exercises.json
+  exercisesByDay: null,  // populated from exercises.json
+  dayColors: null        // { '<dayName>': '#rrggbb' }
 };
 
-const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+let DAY_ORDER = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (!GITHUB_CONFIG.isConfigured) {
@@ -96,10 +93,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadExercisesConfig() {
   try {
     const raw = await getRawExercises();
-    recState.exercisesByDay = JSON.parse(raw);
+    const model = adaptExercisesModel(JSON.parse(raw));
+    DAY_ORDER = model.days.map(d => d.name);
+    recState.exercisesByDay = {};
+    recState.dayColors = {};
+    for (const d of model.days) {
+      recState.exercisesByDay[d.name] = d.exercises;
+      recState.dayColors[d.name] = d.color;
+    }
   } catch (e) {
     // Non-fatal: fall back to flat alphabetical if exercises.json can't load
     recState.exercisesByDay = null;
+    recState.dayColors = null;
   }
 }
 
@@ -160,7 +165,7 @@ function renderRecords() {
       if (!hasAnyRecords) continue;
 
       html += '<div class="records-day-section">';
-      html += '<div class="records-day-heading" data-day="' + day + '">' + day + '</div>';
+      html += '<div class="records-day-heading" data-day="' + escapeHtml(day) + '">' + escapeHtml(day) + '</div>';
 
       for (const ex of dayExercises) {
         if (!byExercise.has(ex.name)) continue;
@@ -199,13 +204,30 @@ function renderRecords() {
   region.innerHTML = html;
 
   document.getElementById('btn-recalc').addEventListener('click', handleRecalculate);
+
+  region.querySelectorAll('.records-day-heading').forEach(h => {
+    const c = recState.dayColors && recState.dayColors[h.dataset.day];
+    if (c) applyDayColor(h, c);
+  });
+}
+
+// Escape the 5 HTML-significant chars before interpolating user-editable day/
+// exercise names into innerHTML (incl. the data-day attribute). & first so
+// entities aren't double-escaped. The browser decodes it back for dataset reads.
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderExerciseRecordCard(exerciseName, recs) {
   const sorted = recs.slice().sort((a, b) => a.repCount - b.repCount);
 
   let html = '<div class="record-card">';
-  html += '<div class="record-card-header"><span class="record-card-name">' + exerciseName + '</span></div>';
+  html += '<div class="record-card-header"><span class="record-card-name">' + escapeHtml(exerciseName) + '</span></div>';
   html += '<div class="record-table">';
   html += '<div class="record-row header-row"><span>Reps</span><span>Best weight</span><span>Date</span></div>';
 

@@ -29,18 +29,6 @@ async function getRawCSV() {
   return res.text();
 }
 
-async function appendRowsToCSV(newRows) {
-  if (!newRows || newRows.length === 0) {
-    throw new Error('appendRowsToCSV: no rows provided');
-  }
-
-  const { content, sha } = await getCSVFile();
-  const trimmed = content.trimEnd();
-  const appended = trimmed + '\n' + newRows.join('\n') + '\n';
-
-  return putToWorker('/csv', appended, sha, 'Log workout — ' + new Date().toISOString().slice(0, 10));
-}
-
 async function replaceCSVContent(fullCSVText, commitMessage) {
   const { sha } = await getCSVFile();
   const content = fullCSVText.trimEnd() + '\n';
@@ -106,6 +94,17 @@ async function getRawExercises() {
   }
 
   return res.text();
+}
+
+/**
+ * loadExercisesLegacyMap()
+ * Reads exercises.json (v1 or v2 shape) and normalizes it through core.js
+ * into the legacy {"<dayName>": [{name,defaultSets}]} map every page reader
+ * expects. Single shared place for the v1<->v2 tolerance (controller
+ * amendment A) — call this instead of JSON.parse(await getRawExercises()).
+ */
+async function loadExercisesLegacyMap() {
+  return modelToLegacyMap(adaptExercisesModel(JSON.parse(await getRawExercises())));
 }
 
 /**
@@ -190,33 +189,9 @@ async function putToWorker(path, content, sha, message) {
 
 
 function parseCSV(rawText) {
-  if (!rawText || !rawText.trim()) return [];
-
-  const lines = rawText.trim().split('\n');
-  const dataLines = lines.slice(1);
-
-  return dataLines
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map(line => {
-      const cols = splitCSVLine(line);
-      if (cols.length < 9) return null;
-
-      return {
-        date:              cols[0].trim(),
-        workoutDay:        cols[1].trim(),
-        exercise:          cols[2].trim(),
-        // Store as string so both normal ("1","2") and superset
-        // ("1A","1B") set numbers survive round-trips unchanged.
-        setNumber:         cols[3].trim(),
-        weight:            parseFloat(cols[4]),
-        reps:              parseInt(cols[5], 10),
-        load:              parseFloat(cols[6]),
-        exerciseLoad:      parseFloat(cols[7]),
-        totalWorkoutLoad:  parseFloat(cols[8])
-      };
-    })
-    .filter(row => row !== null && row.setNumber && row.setNumber.length > 0);
+  // Delegates to core.js (session-id aware). Thin wrapper so existing callers
+  // (dashboard.html, index.html history, rebuildAllRecordsFromHistory) are unchanged.
+  return parseWorkoutCSV(rawText);
 }
 
 function parseRecordsCSV(rawText) {
@@ -241,52 +216,19 @@ function parseRecordsCSV(rawText) {
     .filter(row => row !== null && !isNaN(row.repCount));
 }
 
-function splitCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
+// splitCSVLine now lives in core.js (loaded first); parseRecordsCSV above
+// resolves to that global (controller amendment B).
 
 function serializeCSV(rows) {
-  const header = 'Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workout Load';
-  const lines = rows.map(r => [
-    r.date, r.workoutDay, r.exercise, r.setNumber,
-    r.weight, r.reps, r.load, r.exerciseLoad, r.totalWorkoutLoad
-  ].join(','));
-  return [header].concat(lines).join('\n') + '\n';
+  return serializeWorkoutCSV(rows);
 }
 
 function serializeRecordsCSV(records) {
   const header = 'Exercise,RepCount,Weight,DateAchieved';
-  const lines = records.map(r => [r.exercise, r.repCount, r.weight, r.dateAchieved].join(','));
+  // csvField (from core.js, loaded first) quotes any field with a comma/quote so an
+  // exercise like `Squat, Paused` can't shift columns and corrupt the file.
+  const lines = records.map(r => [r.exercise, r.repCount, r.weight, r.dateAchieved].map(csvField).join(','));
   return [header].concat(lines).join('\n') + '\n';
-}
-
-function groupByDate(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    if (!map.has(row.date)) map.set(row.date, []);
-    map.get(row.date).push(row);
-  }
-  return new Map([...map.entries()].sort((a, b) => b[0].localeCompare(a[0])));
-}
-
-function getSessionsOnDate(rows, dateStr) {
-  return rows.filter(r => r.date === dateStr);
 }
 
 function getDatesWithData(rows) {
@@ -398,40 +340,14 @@ function getConsecutiveStreak(rows, exercise, workoutDay, excludeDate) {
   return { weight: winner.weight, reps: winner.reps, count: trueCount };
 }
 
-function calcLoad(weight, reps) {
-  const w = parseFloat(weight) || 0;
-  const r = parseInt(reps, 10) || 0;
-  return w * r;
-}
+/* calcLoad / calcExerciseLoad / calcWorkoutLoad now live in core.js (loaded first). */
 
-function calcExerciseLoad(setsArray) {
-  return setsArray.reduce((sum, s) => sum + calcLoad(s.weight, s.reps), 0);
-}
-
-function calcWorkoutLoad(exercisesMap) {
-  let total = 0;
-  for (const [, sets] of exercisesMap) {
-    total += calcExerciseLoad(sets);
-  }
-  return total;
-}
-
+// Delegates to core.js weekLoad (session-id-safe: sums combinedDayLoad per unique
+// date instead of the per-session totalWorkoutLoad field) so a week containing a
+// multi-session day is never undercounted.
 function calcWeekLoad(rows, isoDateInWeek) {
   const range = getWeekRange(isoDateInWeek);
-  const start = range.start;
-  const end = range.end;
-
-  const seenDates = new Set();
-  let total = 0;
-
-  for (const row of rows) {
-    if (row.date >= start && row.date <= end && !seenDates.has(row.date)) {
-      seenDates.add(row.date);
-      total += row.totalWorkoutLoad;
-    }
-  }
-
-  return total;
+  return weekLoad(rows, range.start, range.end);
 }
 
 function getWeekRange(isoDate) {
@@ -457,60 +373,6 @@ function isoFromDate(dateObj) {
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   const d = String(dateObj.getDate()).padStart(2, '0');
   return y + '-' + m + '-' + d;
-}
-
-function buildCSVRows(date, workoutDay, exercisesMap) {
-  const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
-  const rows = [];
-
-  for (const entry of exercisesMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exerciseLoad = calcExerciseLoad(sets);
-
-    sets.forEach((set, idx) => {
-      const setNum = idx + 1;
-      const load = calcLoad(set.weight, set.reps);
-      rows.push(
-        [
-          date, workoutDay, exerciseName, setNum,
-          set.weight, set.reps, load, exerciseLoad, totalWorkoutLoad
-        ].join(',')
-      );
-    });
-  }
-
-  return rows;
-}
-
-function rebuildRowObjects(date, workoutDay, exercisesMap) {
-  const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
-  const rows = [];
-
-  for (const entry of exercisesMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exerciseLoad = calcExerciseLoad(sets);
-
-    sets.forEach((set, idx) => {
-      // Superset rows carry a setLabel like "1A" or "1B" set by
-      // buildExercisesMapFromDOM. Normal rows use sequential integers.
-      const setNum = set.setLabel !== undefined ? set.setLabel : String(idx + 1);
-      rows.push({
-        date: date,
-        workoutDay: workoutDay,
-        exercise: exerciseName,
-        setNumber: setNum,
-        weight: set.weight,
-        reps: set.reps,
-        load: calcLoad(set.weight, set.reps),
-        exerciseLoad: exerciseLoad,
-        totalWorkoutLoad: totalWorkoutLoad
-      });
-    });
-  }
-
-  return rows;
 }
 
 function computeAllTimeRecords(allWorkoutRows) {
@@ -578,6 +440,13 @@ function getRecordsForExercise(records, exercise) {
     .sort((a, b) => a.repCount - b.repCount);
 }
 
+// Applies a day's configured color to a DOM element via the --day-color custom
+// property. Consumed by the dynamic day-rendering (Manage) and mobile-framing
+// sections; a no-op until CSS references var(--day-color).
+function applyDayColor(el, hex) {
+  if (el && hex) el.style.setProperty('--day-color', hex);
+}
+
 const LS_PREFIX = 'wt_session_';
 const LS_COLLAPSE_PREFIX = 'wt_collapsed_';
 
@@ -611,6 +480,18 @@ function hasLocalStorage(workoutDay) {
   } catch (e) {
     return false;
   }
+}
+
+const LS_SID_PREFIX = 'wt_sid_';
+
+function saveSessionId(workoutDay, sessionId) {
+  try { localStorage.setItem(LS_SID_PREFIX + workoutDay, sessionId); } catch (e) {}
+}
+function loadSessionId(workoutDay) {
+  try { return localStorage.getItem(LS_SID_PREFIX + workoutDay) || null; } catch (e) { return null; }
+}
+function clearSessionId(workoutDay) {
+  try { localStorage.removeItem(LS_SID_PREFIX + workoutDay); } catch (e) {}
 }
 
 function setCollapsedState(exerciseKey, isCollapsed) {
@@ -691,10 +572,6 @@ function showToast(message, type, duration) {
   }, duration);
 }
 
-function formatVolume(n) {
-  return Math.round(n).toLocaleString('en-US');
-}
-
 function formatLoad(n) {
   return Math.round(n).toLocaleString('en-US');
 }
@@ -703,74 +580,133 @@ function formatWeight(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-function renderDayDetail(containerEl, rows, dateStr) {
-  const dayRows = getSessionsOnDate(rows, dateStr);
+// Escape the 5 HTML-significant chars before interpolating user-editable names
+// (day types, exercise names) into innerHTML. & first so entities aren't double-escaped.
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-  if (dayRows.length === 0) {
+function renderDayDetail(containerEl, rows, dateStr, opts) {
+  opts = opts || {};
+  const dayColors     = opts.dayColors || {};
+  const editSessionId = opts.editSessionId || null;
+  const editOrder     = opts.editOrder || null;
+
+  const sessions = sessionsOnDate(rows, dateStr);
+  if (sessions.length === 0) {
     containerEl.innerHTML = '<div class="empty-state">No workout logged for this date.</div>';
     return;
   }
 
-  const workoutDay  = dayRows[0].workoutDay;
   const displayDate = formatDisplayDate(dateStr);
-  const totalLoad   = dayRows[0].totalWorkoutLoad;
+  const dayTotal    = combinedDayLoad(rows, dateStr);
   const weekLoad    = calcWeekLoad(rows, dateStr);
+  const multi       = sessions.length > 1;
 
-  const exerciseMap = new Map();
-  for (const row of dayRows) {
-    if (!exerciseMap.has(row.exercise)) exerciseMap.set(row.exercise, []);
-    exerciseMap.get(row.exercise).push(row);
-  }
-  for (const entry of exerciseMap) {
-    entry[1].sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
-  }
+  // Ordered, de-duplicated workout-day names for the combined header.
+  const dayTypes = [];
+  for (const s of sessions) if (dayTypes.indexOf(s.workoutDay) === -1) dayTypes.push(s.workoutDay);
 
-  let html = '';
-  html += '<div class="day-detail">';
-  html += '<div class="day-detail-header">';
-  html += '<div class="day-detail-type">' + workoutDay + ' Day</div>';
-  html += '<div class="day-detail-date">' + displayDate + '</div>';
-  html += '</div>';
+  const colorAttr = name => (dayColors[name] ? ' data-day-color="' + dayColors[name] + '"' : '');
 
-  for (const entry of exerciseMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exLoad = sets[0].exerciseLoad;
-    const totalReps = sets.reduce((s, r) => s + r.reps, 0);
+  let html = '<div class="day-detail">';
 
-    html += '<div class="detail-exercise">';
-    html += '<div class="detail-exercise-name">' + exerciseName + '</div>';
-    html += '<div class="detail-set-row header-row"><span>Set</span><span>Weight</span><span>Reps</span><span>Load</span></div>';
+  // Combined day header: colored multi-type chips + date.
+  html += '<div class="day-detail-header"><div class="day-detail-type">';
+  html += dayTypes.map(name => '<span class="day-type-chip"' + colorAttr(name) + '>' + escapeHtml(name) + '</span>')
+                  .join('<span class="day-type-sep"> + </span>');
+  html += '</div><div class="day-detail-date">' + displayDate + '</div></div>';
 
-    for (const set of sets) {
-      html += '<div class="detail-set-row">' +
-        '<span class="set-col mono">' + set.setNumber + '</span>' +
-        '<span class="mono">' + formatWeight(set.weight) + ' lb</span>' +
-        '<span class="mono">' + set.reps + '</span>' +
-        '<span class="vol-col mono">' + formatLoad(set.load) + '</span>' +
-        '</div>';
+  // Sessions.
+  for (const session of sessions) {
+    const editing = session.sessionId === editSessionId;
+
+    // Group this session's rows by exercise, preserving first-seen order; sort sets.
+    const exMap = new Map();
+    for (const r of session.rows) {
+      if (!exMap.has(r.exercise)) exMap.set(r.exercise, []);
+      exMap.get(r.exercise).push(r);
+    }
+    for (const setsArr of exMap.values()) {
+      setsArr.sort((a, b) => String(a.setNumber).localeCompare(String(b.setNumber), undefined, { numeric: true }));
     }
 
-    html += '<div class="detail-exercise-subtotal">' +
-      '<span>' + sets.length + ' sets · ' + totalReps + ' reps</span>' +
-      '<span class="vol">' + formatLoad(exLoad) + '</span>' +
-      '</div>';
+    // Display order: live edit-preview order when editing, else natural row order.
+    let exNames = [...exMap.keys()];
+    if (editing && editOrder) {
+      const known = editOrder.filter(n => exMap.has(n));
+      exNames = known.concat(exNames.filter(n => known.indexOf(n) === -1));
+    }
+
+    const sessionSubtotal = session.rows.reduce((s, r) => s + r.load, 0);
+
+    html += '<div class="detail-session" data-session-id="' + session.sessionId + '">';
+    html += '<div class="detail-session-header">';
+    if (multi) {
+      html += '<span class="detail-session-type"' + colorAttr(session.workoutDay) + '>' + escapeHtml(session.workoutDay) + '</span>';
+      html += '<span class="detail-session-subtotal">' + formatLoad(sessionSubtotal) + '</span>';
+    }
+    if (editing) {
+      html += '<span class="edit-order-actions">' +
+        '<button class="btn btn-secondary btn-sm edit-order-cancel" data-session-id="' + session.sessionId + '">Cancel</button>' +
+        '<button class="btn btn-primary btn-sm edit-order-save" data-session-id="' + session.sessionId + '">Save order</button>' +
+        '</span>';
+    } else {
+      html += '<button class="btn btn-secondary btn-sm session-edit-btn" data-session-id="' + session.sessionId + '">Edit order</button>';
+    }
     html += '</div>';
+
+    exNames.forEach((exerciseName, idx) => {
+      const sets       = exMap.get(exerciseName);
+      const exSubtotal = sets.reduce((s, r) => s + r.load, 0);
+      const totalReps  = sets.reduce((s, r) => s + r.reps, 0);
+
+      html += '<div class="detail-exercise"><div class="detail-exercise-head">';
+      html += '<div class="detail-exercise-name">' + escapeHtml(exerciseName) + '</div>';
+      if (editing) {
+        const up   = idx === 0 ? ' disabled' : '';
+        const down = idx === exNames.length - 1 ? ' disabled' : '';
+        html += '<span class="ex-reorder">' +
+          '<button class="ex-move ex-up" data-ex="' + encodeURIComponent(exerciseName) + '"' + up + ' aria-label="Move up">&uarr;</button>' +
+          '<button class="ex-move ex-down" data-ex="' + encodeURIComponent(exerciseName) + '"' + down + ' aria-label="Move down">&darr;</button>' +
+          '</span>';
+      }
+      html += '</div>';
+
+      html += '<div class="detail-set-row header-row"><span>Set</span><span>Weight</span><span>Reps</span><span>Load</span></div>';
+      for (const set of sets) {
+        html += '<div class="detail-set-row">' +
+          '<span class="set-col mono">' + set.setNumber + '</span>' +
+          '<span class="mono">' + formatWeight(set.weight) + ' lb</span>' +
+          '<span class="mono">' + set.reps + '</span>' +
+          '<span class="vol-col mono">' + formatLoad(set.load) + '</span>' +
+          '</div>';
+      }
+      html += '<div class="detail-exercise-subtotal">' +
+        '<span>' + sets.length + ' sets · ' + totalReps + ' reps</span>' +
+        '<span class="vol">' + formatLoad(exSubtotal) + '</span>' +
+        '</div></div>';
+    });
+
+    html += '</div>'; // .detail-session
   }
 
-  html += '<div class="session-total-bar">' +
-    '<span class="label-text">Workout load</span>' +
-    '<span class="total-num">' + formatLoad(totalLoad) + '</span>' +
-    '</div>';
-
-  html += '<div class="session-total-bar week-load-bar">' +
-    '<span class="label-text">Week load</span>' +
-    '<span class="total-num">' + formatLoad(weekLoad) + '</span>' +
-    '</div>';
-
-  html += '</div>';
+  html += '<div class="session-total-bar"><span class="label-text">Day total</span>' +
+          '<span class="total-num">' + formatLoad(dayTotal) + '</span></div>';
+  html += '<div class="session-total-bar week-load-bar"><span class="label-text">Week load</span>' +
+          '<span class="total-num">' + formatLoad(weekLoad) + '</span></div>';
+  html += '</div>'; // .day-detail
 
   containerEl.innerHTML = html;
+
+  // Apply dynamic day colors via the shared helper (replaces fixed [data-day] CSS).
+  containerEl.querySelectorAll('[data-day-color]')
+    .forEach(el => applyDayColor(el, el.getAttribute('data-day-color')));
 }
 
 function createAutosaveEngine(opts) {
@@ -779,6 +715,7 @@ function createAutosaveEngine(opts) {
   const getDate = opts.getDate;
   const getWorkoutDay = opts.getWorkoutDay;
   const getExercisesMap = opts.getExercisesMap;
+  const getSessionId = opts.getSessionId || function () { return undefined; };
 
   let debounceTimer = null;
   let isSaving = false;
@@ -813,7 +750,7 @@ function createAutosaveEngine(opts) {
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap);
+      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
       onStatusChange('saved');
     } catch (e) {
       onStatusChange('error', e.message);
@@ -873,7 +810,7 @@ function createAutosaveEngine(opts) {
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap);
+      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
       onStatusChange('saved');
       return { ok: true };
     } catch (e) {
@@ -887,17 +824,18 @@ function createAutosaveEngine(opts) {
   return { scheduleSave: scheduleSave, flush: flush, forceFlush: forceFlush, completeFlush: completeFlush };
 }
 
-async function commitTodaysWorkout(date, workoutDay, exercisesMap) {
+async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   const fileData = await getCSVFile();
   const content = fileData.content;
   const sha = fileData.sha;
-  const allRows = parseCSV(content);
+  const allRows = parseWorkoutCSV(content);
 
-  const otherRows = allRows.filter(r => !(r.date === date && r.workoutDay === workoutDay));
-  const newRows = rebuildRowObjects(date, workoutDay, exercisesMap);
-
-  const merged = otherRows.concat(newRows);
-  const csvText = serializeCSV(merged);
+  // Fall back to the legacy date+day key if no explicit id (keeps this commit
+  // functional before the index.html session-id lifecycle task lands).
+  const sid = (sessionId != null && sessionId !== '') ? sessionId : (date + '|' + workoutDay);
+  const newSessionRows = rebuildSessionRows(sid, date, workoutDay, exercisesMap);
+  const merged = commitReplaceSession(allRows, sid, newSessionRows);
+  const csvText = serializeWorkoutCSV(merged);
 
   const result = await putToWorker('/csv', csvText, sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
 
@@ -1002,11 +940,14 @@ function buildExercisesMapFromDOM(sessionEntryEl) {
 
 function serializeSessionForStorage(sessionEntryEl, workoutDay) {
   const exercises = {};
+  const orderNames = [];
   const blocks = sessionEntryEl.querySelectorAll('.exercise-block');
 
   for (const block of blocks) {
     const name = block.dataset.exercise;
     if (!name) continue;
+
+    orderNames.push(name);
 
     const setRows = block.querySelectorAll('.set-row');
     const sets = [];
@@ -1023,5 +964,12 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
     exercises[name] = sets;
   }
 
-  return { day: workoutDay, exercises: exercises };
+  return { day: workoutDay, order: dedupeOrder(orderNames), exercises: exercises };
+}
+
+// Node-only export for unit tests. In the browser this block is skipped and every
+// function above stays a plain global (core.js globals like csvField resolve at call
+// time exactly as before). No behavior change for the PWA.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { serializeRecordsCSV, parseRecordsCSV, escapeHtml };
 }
