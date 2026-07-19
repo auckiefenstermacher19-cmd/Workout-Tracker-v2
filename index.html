@@ -39,11 +39,6 @@
       flex-shrink: 0;
     }
 
-    .session-day-badge[data-day="Legs"]      { color: var(--day-legs); }
-    .session-day-badge[data-day="Chest"]     { color: var(--day-chest); }
-    .session-day-badge[data-day="Back"]      { color: var(--day-back); }
-    .session-day-badge[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .session-day-badge[data-day="Arms"]      { color: var(--day-arms); }
   </style>
 </head>
 <body>
@@ -59,33 +54,7 @@
 
   <div style="height: var(--space-4);"></div>
 
-  <div class="day-grid" id="day-grid">
-    <button class="day-btn" data-day="Legs">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Legs</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Chest">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Chest</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Back">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Back</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Shoulders">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Shoulders</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-    <button class="day-btn" data-day="Arms">
-      <span class="day-dot"></span>
-      <span class="day-btn-label">Arms</span>
-      <span class="day-btn-arrow">&rsaquo;</span>
-    </button>
-  </div>
+  <div class="day-grid" id="day-grid"></div>
 
   <div class="home-footer" style="display:flex; gap: var(--space-3); flex-wrap: wrap; justify-content:center;">
     <a href="dashboard.html" class="btn btn-ghost">View Dashboard &rarr;</a>
@@ -137,6 +106,7 @@ const state = {
 };
 
 let EXERCISES = null;
+let DAYS_MODEL = [];
 let autosave  = null;
 
 function showScreen(id) {
@@ -160,12 +130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   document.getElementById('home-date-label').textContent = formatDisplayDate(todayISO());
-  renderResumeBanners();
   await loadExercises();
-
-  document.querySelectorAll('.day-btn').forEach(btn => {
-    btn.addEventListener('click', () => startSession(btn.dataset.day));
-  });
+  renderResumeBanners();
 
   document.getElementById('btn-back-home').addEventListener('click', () => {
     if (autosave) autosave.forceFlush();
@@ -192,16 +158,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadExercises() {
   try {
-    EXERCISES = await loadExercisesLegacyMap();
+    const model = adaptExercisesModel(JSON.parse(await getRawExercises()));
+    DAYS_MODEL = model.days;
+    DAY_ORDER = model.days.map(d => d.name);
+    EXERCISES = modelToLegacyMap(model);
   } catch (e) {
     showToast('Could not load exercise library', 'error', 4000);
+    DAYS_MODEL = [];
+    DAY_ORDER = [];
     EXERCISES = {};
+  }
+  renderDayButtons();
+}
+
+function renderDayButtons() {
+  const grid = document.getElementById('day-grid');
+  grid.innerHTML = '';
+  for (const day of DAYS_MODEL) {
+    const btn = document.createElement('button');
+    btn.className = 'day-btn';
+    btn.dataset.day = day.name;
+    applyDayColor(btn, day.color);
+    btn.innerHTML =
+      '<span class="day-dot"></span>' +
+      '<span class="day-btn-label"></span>' +
+      '<span class="day-btn-arrow">&rsaquo;</span>';
+    btn.querySelector('.day-btn-label').textContent = day.name;
+    btn.addEventListener('click', () => startSession(day.name));
+    grid.appendChild(btn);
   }
 }
 
 function renderResumeBanners() {
   const container = document.getElementById('resume-banners');
-  const days = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+  const days = DAY_ORDER;
   const banners = [];
 
   for (const day of days) {
@@ -254,6 +244,8 @@ async function startSession(day, resume) {
   const badge = document.getElementById('session-day-badge');
   badge.textContent = day;
   badge.dataset.day = day;
+  const dayModel = DAYS_MODEL.find(d => d.name === day);
+  applyDayColor(badge, dayModel ? dayModel.color : null);
 
   setSaveStatus('idle', 'No changes');
 
@@ -403,7 +395,7 @@ function appendAddExerciseControl(list) {
  * Canonical day ordering used everywhere a cross-day list needs to
  * be grouped predictably (dropdowns, etc.).
  */
-const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+let DAY_ORDER = [];
 
 /**
  * getDayExerciseDefs()

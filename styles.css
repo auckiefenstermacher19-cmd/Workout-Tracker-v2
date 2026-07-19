@@ -466,13 +466,8 @@ p, li {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: var(--day-color, var(--text-muted));
 }
-
-.day-btn[data-day="Legs"]      .day-dot { background: var(--day-legs); }
-.day-btn[data-day="Chest"]     .day-dot { background: var(--day-chest); }
-.day-btn[data-day="Back"]      .day-dot { background: var(--day-back); }
-.day-btn[data-day="Shoulders"] .day-dot { background: var(--day-shoulders); }
-.day-btn[data-day="Arms"]      .day-dot { background: var(--day-arms); }
 
 .day-btn-label {
   flex: 1;
@@ -520,7 +515,7 @@ p, li {
   border-radius: var(--radius-xl);
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--day-color, var(--text-secondary));
 }
 
 /* Global save-status pill, lives in the sticky header */
