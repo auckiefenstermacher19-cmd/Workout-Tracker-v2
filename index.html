@@ -343,8 +343,16 @@ function buildExerciseList(exercises, savedData) {
   const list = document.getElementById('exercise-list');
   list.innerHTML = '';
 
-  for (const ex of exercises) {
-    const card = buildExerciseCard(ex, savedData);
+  const defaultNames = exercises.map(e => e.name);
+  const defByName = new Map(exercises.map(e => [e.name, e]));
+
+  // On resume, render in the draft's saved order (authoritative) and rescue
+  // added-but-non-default exercises; otherwise use the day's default order.
+  const order = savedData ? resumeRenderOrder(defaultNames, savedData) : defaultNames;
+
+  for (const name of order) {
+    const def = defByName.get(name) || findExerciseDef(name) || { name: name, defaultSets: 3 };
+    const card = buildExerciseCard(def, savedData);
     list.appendChild(card);
   }
 
