@@ -1297,6 +1297,67 @@ p, li {
   color: var(--text-secondary);
 }
 
+/* ── Dashboard: multi-type header + session sub-groups ─────────── */
+.day-type-chip { color: var(--day-color, var(--text-primary)); }
+.day-type-sep  { color: var(--text-muted); font-weight: 600; }
+
+.detail-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.detail-session-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detail-session-type {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--day-color, var(--text-primary));
+}
+
+.detail-session-subtotal {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-volume);
+}
+
+/* Push the Edit-order / Cancel+Save controls to the trailing edge. */
+.session-edit-btn,
+.edit-order-actions { margin-left: auto; }
+.edit-order-actions { display: flex; gap: var(--space-2); }
+
+/* Exercise header row carries the reorder controls while editing. */
+.detail-exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ex-reorder { display: inline-flex; gap: var(--space-1); }
+
+.ex-move {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.ex-move:disabled { opacity: 0.35; cursor: default; }
+.ex-move:active:not(:disabled) { background: var(--bg-card); }
 
 /* ── Calendar Popup ───────────────────────────────────────────── */
 .cal-overlay {
