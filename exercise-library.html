@@ -192,8 +192,7 @@ async function loadLibrary() {
     '<div class="spinner"></div><span>Loading exercise library…</span></div>';
 
   try {
-    const raw = await getRawExercises();
-    libState.exercises = JSON.parse(raw);
+    libState.exercises = await loadExercisesLegacyMap();
     libState.loaded = true;
     renderLibrary();
   } catch (e) {

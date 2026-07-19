@@ -29,18 +29,6 @@ async function getRawCSV() {
   return res.text();
 }
 
-async function appendRowsToCSV(newRows) {
-  if (!newRows || newRows.length === 0) {
-    throw new Error('appendRowsToCSV: no rows provided');
-  }
-
-  const { content, sha } = await getCSVFile();
-  const trimmed = content.trimEnd();
-  const appended = trimmed + '\n' + newRows.join('\n') + '\n';
-
-  return putToWorker('/csv', appended, sha, 'Log workout — ' + new Date().toISOString().slice(0, 10));
-}
-
 async function replaceCSVContent(fullCSVText, commitMessage) {
   const { sha } = await getCSVFile();
   const content = fullCSVText.trimEnd() + '\n';
@@ -106,6 +94,17 @@ async function getRawExercises() {
   }
 
   return res.text();
+}
+
+/**
+ * loadExercisesLegacyMap()
+ * Reads exercises.json (v1 or v2 shape) and normalizes it through core.js
+ * into the legacy {"<dayName>": [{name,defaultSets}]} map every page reader
+ * expects. Single shared place for the v1<->v2 tolerance (controller
+ * amendment A) — call this instead of JSON.parse(await getRawExercises()).
+ */
+async function loadExercisesLegacyMap() {
+  return modelToLegacyMap(adaptExercisesModel(JSON.parse(await getRawExercises())));
 }
 
 /**
@@ -190,33 +189,9 @@ async function putToWorker(path, content, sha, message) {
 
 
 function parseCSV(rawText) {
-  if (!rawText || !rawText.trim()) return [];
-
-  const lines = rawText.trim().split('\n');
-  const dataLines = lines.slice(1);
-
-  return dataLines
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map(line => {
-      const cols = splitCSVLine(line);
-      if (cols.length < 9) return null;
-
-      return {
-        date:              cols[0].trim(),
-        workoutDay:        cols[1].trim(),
-        exercise:          cols[2].trim(),
-        // Store as string so both normal ("1","2") and superset
-        // ("1A","1B") set numbers survive round-trips unchanged.
-        setNumber:         cols[3].trim(),
-        weight:            parseFloat(cols[4]),
-        reps:              parseInt(cols[5], 10),
-        load:              parseFloat(cols[6]),
-        exerciseLoad:      parseFloat(cols[7]),
-        totalWorkoutLoad:  parseFloat(cols[8])
-      };
-    })
-    .filter(row => row !== null && row.setNumber && row.setNumber.length > 0);
+  // Delegates to core.js (session-id aware). Thin wrapper so existing callers
+  // (dashboard.html, index.html history, rebuildAllRecordsFromHistory) are unchanged.
+  return parseWorkoutCSV(rawText);
 }
 
 function parseRecordsCSV(rawText) {
@@ -241,33 +216,11 @@ function parseRecordsCSV(rawText) {
     .filter(row => row !== null && !isNaN(row.repCount));
 }
 
-function splitCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
+// splitCSVLine now lives in core.js (loaded first); parseRecordsCSV above
+// resolves to that global (controller amendment B).
 
 function serializeCSV(rows) {
-  const header = 'Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workout Load';
-  const lines = rows.map(r => [
-    r.date, r.workoutDay, r.exercise, r.setNumber,
-    r.weight, r.reps, r.load, r.exerciseLoad, r.totalWorkoutLoad
-  ].join(','));
-  return [header].concat(lines).join('\n') + '\n';
+  return serializeWorkoutCSV(rows);
 }
 
 function serializeRecordsCSV(records) {
@@ -398,23 +351,7 @@ function getConsecutiveStreak(rows, exercise, workoutDay, excludeDate) {
   return { weight: winner.weight, reps: winner.reps, count: trueCount };
 }
 
-function calcLoad(weight, reps) {
-  const w = parseFloat(weight) || 0;
-  const r = parseInt(reps, 10) || 0;
-  return w * r;
-}
-
-function calcExerciseLoad(setsArray) {
-  return setsArray.reduce((sum, s) => sum + calcLoad(s.weight, s.reps), 0);
-}
-
-function calcWorkoutLoad(exercisesMap) {
-  let total = 0;
-  for (const [, sets] of exercisesMap) {
-    total += calcExerciseLoad(sets);
-  }
-  return total;
-}
+/* calcLoad / calcExerciseLoad / calcWorkoutLoad now live in core.js (loaded first). */
 
 function calcWeekLoad(rows, isoDateInWeek) {
   const range = getWeekRange(isoDateInWeek);
@@ -457,60 +394,6 @@ function isoFromDate(dateObj) {
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   const d = String(dateObj.getDate()).padStart(2, '0');
   return y + '-' + m + '-' + d;
-}
-
-function buildCSVRows(date, workoutDay, exercisesMap) {
-  const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
-  const rows = [];
-
-  for (const entry of exercisesMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exerciseLoad = calcExerciseLoad(sets);
-
-    sets.forEach((set, idx) => {
-      const setNum = idx + 1;
-      const load = calcLoad(set.weight, set.reps);
-      rows.push(
-        [
-          date, workoutDay, exerciseName, setNum,
-          set.weight, set.reps, load, exerciseLoad, totalWorkoutLoad
-        ].join(',')
-      );
-    });
-  }
-
-  return rows;
-}
-
-function rebuildRowObjects(date, workoutDay, exercisesMap) {
-  const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
-  const rows = [];
-
-  for (const entry of exercisesMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    const exerciseLoad = calcExerciseLoad(sets);
-
-    sets.forEach((set, idx) => {
-      // Superset rows carry a setLabel like "1A" or "1B" set by
-      // buildExercisesMapFromDOM. Normal rows use sequential integers.
-      const setNum = set.setLabel !== undefined ? set.setLabel : String(idx + 1);
-      rows.push({
-        date: date,
-        workoutDay: workoutDay,
-        exercise: exerciseName,
-        setNumber: setNum,
-        weight: set.weight,
-        reps: set.reps,
-        load: calcLoad(set.weight, set.reps),
-        exerciseLoad: exerciseLoad,
-        totalWorkoutLoad: totalWorkoutLoad
-      });
-    });
-  }
-
-  return rows;
 }
 
 function computeAllTimeRecords(allWorkoutRows) {
@@ -576,6 +459,13 @@ function getRecordsForExercise(records, exercise) {
   return records
     .filter(r => r.exercise === exercise)
     .sort((a, b) => a.repCount - b.repCount);
+}
+
+// Applies a day's configured color to a DOM element via the --day-color custom
+// property. Consumed by the dynamic day-rendering (Manage) and mobile-framing
+// sections; a no-op until CSS references var(--day-color).
+function applyDayColor(el, hex) {
+  if (el && hex) el.style.setProperty('--day-color', hex);
 }
 
 const LS_PREFIX = 'wt_session_';
@@ -779,6 +669,7 @@ function createAutosaveEngine(opts) {
   const getDate = opts.getDate;
   const getWorkoutDay = opts.getWorkoutDay;
   const getExercisesMap = opts.getExercisesMap;
+  const getSessionId = opts.getSessionId || function () { return undefined; };
 
   let debounceTimer = null;
   let isSaving = false;
@@ -813,7 +704,7 @@ function createAutosaveEngine(opts) {
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap);
+      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
       onStatusChange('saved');
     } catch (e) {
       onStatusChange('error', e.message);
@@ -873,7 +764,7 @@ function createAutosaveEngine(opts) {
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap);
+      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
       onStatusChange('saved');
       return { ok: true };
     } catch (e) {
@@ -887,17 +778,18 @@ function createAutosaveEngine(opts) {
   return { scheduleSave: scheduleSave, flush: flush, forceFlush: forceFlush, completeFlush: completeFlush };
 }
 
-async function commitTodaysWorkout(date, workoutDay, exercisesMap) {
+async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   const fileData = await getCSVFile();
   const content = fileData.content;
   const sha = fileData.sha;
-  const allRows = parseCSV(content);
+  const allRows = parseWorkoutCSV(content);
 
-  const otherRows = allRows.filter(r => !(r.date === date && r.workoutDay === workoutDay));
-  const newRows = rebuildRowObjects(date, workoutDay, exercisesMap);
-
-  const merged = otherRows.concat(newRows);
-  const csvText = serializeCSV(merged);
+  // Fall back to the legacy date+day key if no explicit id (keeps this commit
+  // functional before the index.html session-id lifecycle task lands).
+  const sid = (sessionId != null && sessionId !== '') ? sessionId : (date + '|' + workoutDay);
+  const newSessionRows = rebuildSessionRows(sid, date, workoutDay, exercisesMap);
+  const merged = commitReplaceSession(allRows, sid, newSessionRows);
+  const csvText = serializeWorkoutCSV(merged);
 
   const result = await putToWorker('/csv', csvText, sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
 
