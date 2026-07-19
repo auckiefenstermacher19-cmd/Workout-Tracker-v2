@@ -38,13 +38,8 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
       padding: var(--space-2) 0;
-      color: var(--text-secondary);
+      color: var(--day-color, var(--text-secondary));
     }
-    .records-day-heading[data-day="Legs"]      { color: var(--day-legs); }
-    .records-day-heading[data-day="Chest"]     { color: var(--day-chest); }
-    .records-day-heading[data-day="Back"]      { color: var(--day-back); }
-    .records-day-heading[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .records-day-heading[data-day="Arms"]      { color: var(--day-arms); }
   </style>
 </head>
 <body>
@@ -74,10 +69,11 @@
 const recState = {
   records: [],
   loaded: false,
-  exercisesByDay: null  // populated from exercises.json
+  exercisesByDay: null,  // populated from exercises.json
+  dayColors: null        // { '<dayName>': '#rrggbb' }
 };
 
-const DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+let DAY_ORDER = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (!GITHUB_CONFIG.isConfigured) {
@@ -96,10 +92,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadExercisesConfig() {
   try {
-    recState.exercisesByDay = await loadExercisesLegacyMap();
+    const raw = await getRawExercises();
+    const model = adaptExercisesModel(JSON.parse(raw));
+    DAY_ORDER = model.days.map(d => d.name);
+    recState.exercisesByDay = {};
+    recState.dayColors = {};
+    for (const d of model.days) {
+      recState.exercisesByDay[d.name] = d.exercises;
+      recState.dayColors[d.name] = d.color;
+    }
   } catch (e) {
     // Non-fatal: fall back to flat alphabetical if exercises.json can't load
     recState.exercisesByDay = null;
+    recState.dayColors = null;
   }
 }
 
@@ -199,6 +204,11 @@ function renderRecords() {
   region.innerHTML = html;
 
   document.getElementById('btn-recalc').addEventListener('click', handleRecalculate);
+
+  region.querySelectorAll('.records-day-heading').forEach(h => {
+    const c = recState.dayColors && recState.dayColors[h.dataset.day];
+    if (c) applyDayColor(h, c);
+  });
 }
 
 function renderExerciseRecordCard(exerciseName, recs) {

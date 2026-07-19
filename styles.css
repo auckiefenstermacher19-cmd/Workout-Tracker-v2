@@ -33,13 +33,6 @@
   --color-error:    #f08080;
   --color-success:  #80d4a0;
 
-  /* Workout day accent dots (subtle, sidebar only) */
-  --day-legs:       #c084fc;
-  --day-chest:      #fb923c;
-  --day-back:       #38bdf8;
-  --day-shoulders:  #facc15;
-  --day-arms:       #f472b6;
-
   /* Spacing */
   --space-1:  4px;
   --space-2:  8px;
