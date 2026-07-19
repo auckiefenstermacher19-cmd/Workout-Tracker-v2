@@ -85,12 +85,6 @@
       padding: var(--space-2) 0;
       color: var(--text-secondary);
     }
-    .lib-day-heading[data-day="Legs"]      { color: var(--day-legs); }
-    .lib-day-heading[data-day="Chest"]     { color: var(--day-chest); }
-    .lib-day-heading[data-day="Back"]      { color: var(--day-back); }
-    .lib-day-heading[data-day="Shoulders"] { color: var(--day-shoulders); }
-    .lib-day-heading[data-day="Arms"]      { color: var(--day-arms); }
-
     .lib-exercise-row {
       display: flex;
       align-items: center;
@@ -111,13 +105,35 @@
       color: var(--text-muted);
       margin-top: 2px;
     }
+
+    .mng-body { padding: var(--space-4) var(--space-4) var(--space-10); display:flex; flex-direction:column; gap: var(--space-4); }
+    .mng-savebar { position: sticky; top: 0; z-index: 5; display:flex; align-items:center; gap: var(--space-3); padding: var(--space-2) 0; background: var(--bg-base); }
+    .mng-rename-opt { font-size: 0.75rem; color: var(--text-secondary); display:flex; gap: var(--space-2); align-items:flex-start; line-height:1.4; }
+    .mng-day-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-3); display:flex; flex-direction:column; gap: var(--space-3); }
+    .mng-day-head { display:flex; align-items:center; gap: var(--space-2); }
+    .mng-day-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; background: var(--day-color, var(--text-muted)); }
+    .mng-day-name { flex:1; min-width:0; font-weight:700; color: var(--day-color, var(--text-primary)); }
+    .mng-day-ops { display:flex; align-items:center; gap: var(--space-1); flex-shrink:0; }
+    .mng-swatches { display:flex; flex-wrap:wrap; gap: var(--space-2); }
+    .mng-swatch { width:24px; height:24px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; }
+    .mng-swatch.is-active { border-color: var(--text-primary); }
+    .mng-ex-list { display:flex; flex-direction:column; gap: var(--space-2); }
+    .mng-ex-row { display:flex; align-items:center; gap: var(--space-2); }
+    .mng-ex-name { flex:1; min-width:0; }
+    .mng-ex-sets { width:56px; flex-shrink:0; text-align:center; }
+    .mng-add-ex { display:flex; gap: var(--space-2); align-items:center; }
+    .mng-add-ex .input:first-child { flex:1; min-width:0; }
+    .mng-add-day { display:flex; gap: var(--space-2); align-items:center; margin-top: var(--space-2); }
+    .mng-add-day .input { flex:1; min-width:0; }
+    .mng-op { min-width: var(--tap-min); padding-left:0; padding-right:0; }
+    .mng-op-danger { color: var(--danger, #f87171); }
   </style>
 </head>
 <body>
 
 <div class="page-header">
   <a href="index.html" class="btn btn-icon btn-secondary page-header-back" aria-label="Back to logger">&larr;</a>
-  <div class="page-header-title">Exercise Library</div>
+  <div class="page-header-title">Manage</div>
   <div class="page-header-actions">
     <a href="records.html" class="btn btn-secondary">Records</a>
     <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
@@ -137,92 +153,21 @@
 <script>
 'use strict';
 
-const libState = {
-  exercises: null,
-  loaded: false
-};
+const MANAGE_PALETTE = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#f472b6', '#4ade80', '#f87171', '#a3a3a3'];
 
-const LIB_DAY_ORDER = ['Legs', 'Chest', 'Back', 'Shoulders', 'Arms'];
+const manageState = { model: null, original: null, saving: false, wired: false };
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   if (!WORKER_CONFIG.isConfigured) {
     document.getElementById('library-region').innerHTML =
       '<div style="padding: var(--space-5) var(--space-4);">' +
       '<div class="error-state"><strong>config.js not configured.</strong><br><br>' +
-      'Open <code>config.js</code> and set ' +
-      '<code>WORKER_CONFIG.baseUrl</code> to your deployed Cloudflare Worker URL ' +
-      'before using the exercise library.</div></div>';
+      'Open <code>config.js</code> and set <code>WORKER_CONFIG.baseUrl</code> to your ' +
+      'deployed Cloudflare Worker URL before using Manage.</div></div>';
     return;
   }
-
-  await loadLibrary();
+  loadManage();
 });
-
-async function loadLibrary() {
-  const region = document.getElementById('library-region');
-  region.innerHTML =
-    '<div class="detail-loading" style="padding: var(--space-12) var(--space-4);">' +
-    '<div class="spinner"></div><span>Loading exercise library…</span></div>';
-
-  try {
-    libState.exercises = await loadExercisesLegacyMap();
-    libState.loaded = true;
-    renderLibrary();
-  } catch (e) {
-    region.innerHTML =
-      '<div style="padding: var(--space-5) var(--space-4);">' +
-      '<div class="error-state">Could not load exercise library.<br>' +
-      '<span style="font-size:0.8125rem; opacity:0.7;">' + e.message + '</span></div></div>';
-  }
-}
-
-function renderLibrary() {
-  const region = document.getElementById('library-region');
-
-  let html = '<div class="lib-body">';
-
-  // Add-exercise form
-  html += '<div class="add-exercise-card">';
-  html += '<h2>Add an exercise</h2>';
-  html += '<div class="form-field"><label for="new-ex-name">Exercise name</label>' +
-    '<input class="input" id="new-ex-name" type="text" placeholder="e.g. Cable Crossover" maxlength="60" /></div>';
-  html += '<div class="form-row">';
-  html += '<div class="form-field"><label for="new-ex-day">Workout day</label>' +
-    '<select class="input" id="new-ex-day">' +
-    LIB_DAY_ORDER.map(d => '<option value="' + d + '">' + d + '</option>').join('') +
-    '</select></div>';
-  html += '<div class="form-field"><label for="new-ex-sets">Default sets</label>' +
-    '<input class="input" id="new-ex-sets" type="number" inputmode="numeric" min="1" max="10" value="3" /></div>';
-  html += '</div>';
-  html += '<button class="btn btn-primary btn-full" id="btn-add-exercise">Add to library</button>';
-  html += '<span class="save-status" id="add-ex-status" data-state="idle" style="align-self:center;">' +
-    '<span class="save-status-dot"></span><span id="add-ex-status-text"></span></span>';
-  html += '</div>';
-
-  // Day-grouped current library listing
-  for (const day of LIB_DAY_ORDER) {
-    const dayExercises = (libState.exercises && libState.exercises[day]) || [];
-    if (dayExercises.length === 0) continue;
-
-    html += '<div class="lib-day-section">';
-    html += '<div class="lib-day-heading" data-day="' + day + '">' + day + '</div>';
-
-    for (const ex of dayExercises) {
-      html += '<div class="lib-exercise-row">' +
-        '<div><div class="lib-exercise-name">' + escapeHtml(ex.name) + '</div>' +
-        '<div class="lib-exercise-meta">' + ex.defaultSets + ' sets by default</div></div>' +
-        '</div>';
-    }
-
-    html += '</div>';
-  }
-
-  html += '</div>';
-
-  region.innerHTML = html;
-
-  document.getElementById('btn-add-exercise').addEventListener('click', handleAddExercise);
-}
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -230,50 +175,228 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-async function handleAddExercise() {
-  const nameInput = document.getElementById('new-ex-name');
-  const daySelect = document.getElementById('new-ex-day');
-  const setsInput = document.getElementById('new-ex-sets');
-  const btn = document.getElementById('btn-add-exercise');
-  const statusEl = document.getElementById('add-ex-status');
-  const statusText = document.getElementById('add-ex-status-text');
-
-  const name = nameInput.value.trim();
-  const day = daySelect.value;
-  const sets = parseInt(setsInput.value, 10);
-
-  if (!name) {
-    showToast('Enter an exercise name', 'error');
-    nameInput.focus();
-    return;
+async function loadManage() {
+  const region = document.getElementById('library-region');
+  region.innerHTML =
+    '<div class="detail-loading" style="padding: var(--space-12) var(--space-4);">' +
+    '<div class="spinner"></div><span>Loading…</span></div>';
+  try {
+    const raw = await getRawExercises();
+    manageState.model = adaptExercisesModel(JSON.parse(raw));
+    manageState.original = adaptExercisesModel(JSON.parse(raw));
+    renderManage();
+    wireManage();
+  } catch (e) {
+    region.innerHTML =
+      '<div style="padding: var(--space-5) var(--space-4);">' +
+      '<div class="error-state">Could not load the exercise library.<br>' +
+      '<span style="font-size:0.8125rem; opacity:0.7;">' + e.message + '</span></div></div>';
   }
-  if (isNaN(sets) || sets < 1) {
-    showToast('Default sets must be at least 1', 'error');
-    setsInput.focus();
-    return;
+}
+
+function renderManage() {
+  const region = document.getElementById('library-region');
+  const model = manageState.model;
+  const renames = diffDayRenames(manageState.original, model);
+
+  let html = '<div class="mng-body">';
+
+  html += '<div class="mng-savebar">';
+  html += '<button class="btn btn-primary" data-act="save">Save changes</button>';
+  html += '<span class="save-status" id="mng-save-status" data-state="idle">' +
+          '<span class="save-status-dot"></span><span id="mng-save-status-text"></span></span>';
+  html += '</div>';
+
+  if (renames.length > 0) {
+    html += '<label class="mng-rename-opt"><input type="checkbox" id="mng-rename-history" checked /> ' +
+      'Also rename ' +
+      renames.map(r => '“' + escapeHtml(r.oldName) + '”→“' + escapeHtml(r.newName) + '”').join(', ') +
+      ' in past workout history</label>';
   }
 
-  btn.disabled = true;
+  for (const day of model.days) {
+    html += '<div class="mng-day-card">';
+    html += '<div class="mng-day-head">';
+    html += '<span class="mng-day-dot" data-day-color="' + day.id + '"></span>';
+    html += '<input class="input mng-day-name" data-field="day-name" data-day-id="' + day.id +
+            '" value="' + escapeHtml(day.name) + '" maxlength="40" />';
+    html += '<div class="mng-day-ops">';
+    html += '<button class="btn btn-sm mng-op" data-act="day-up" data-day-id="' + day.id + '" aria-label="Move day up">↑</button>';
+    html += '<button class="btn btn-sm mng-op" data-act="day-down" data-day-id="' + day.id + '" aria-label="Move day down">↓</button>';
+    html += '<button class="btn btn-sm mng-op mng-op-danger" data-act="day-remove" data-day-id="' + day.id + '" aria-label="Remove day">✕</button>';
+    html += '</div></div>';
+
+    html += '<div class="mng-swatches">';
+    for (const hex of MANAGE_PALETTE) {
+      const active = hex.toLowerCase() === (day.color || '').toLowerCase() ? ' is-active' : '';
+      html += '<button class="mng-swatch' + active + '" data-act="day-color" data-day-id="' + day.id +
+              '" data-color="' + hex + '" style="background:' + hex + '" aria-label="Set color ' + hex + '"></button>';
+    }
+    html += '</div>';
+
+    html += '<div class="mng-ex-list">';
+    for (const ex of day.exercises) {
+      const en = escapeHtml(ex.name);
+      html += '<div class="mng-ex-row">';
+      html += '<input class="input mng-ex-name" data-field="ex-name" data-day-id="' + day.id +
+              '" data-ex-name="' + en + '" value="' + en + '" maxlength="60" />';
+      html += '<input class="input mng-ex-sets" data-field="ex-sets" data-day-id="' + day.id +
+              '" data-ex-name="' + en + '" type="number" inputmode="numeric" min="1" max="10" value="' + ex.defaultSets + '" />';
+      html += '<button class="btn btn-sm mng-op" data-act="ex-up" data-day-id="' + day.id + '" data-ex-name="' + en + '" aria-label="Move exercise up">↑</button>';
+      html += '<button class="btn btn-sm mng-op" data-act="ex-down" data-day-id="' + day.id + '" data-ex-name="' + en + '" aria-label="Move exercise down">↓</button>';
+      html += '<button class="btn btn-sm mng-op mng-op-danger" data-act="ex-remove" data-day-id="' + day.id + '" data-ex-name="' + en + '" aria-label="Remove exercise">✕</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="mng-add-ex">';
+    html += '<input class="input" data-field="new-ex-name" data-day-id="' + day.id + '" type="text" placeholder="Add exercise…" maxlength="60" />';
+    html += '<input class="input mng-ex-sets" data-field="new-ex-sets" data-day-id="' + day.id + '" type="number" inputmode="numeric" min="1" max="10" value="3" />';
+    html += '<button class="btn btn-secondary btn-sm" data-act="add-ex" data-day-id="' + day.id + '">Add</button>';
+    html += '</div>';
+
+    html += '</div>';
+  }
+
+  html += '<div class="mng-add-day">';
+  html += '<input class="input" id="mng-new-day-name" type="text" placeholder="New day name…" maxlength="40" />';
+  html += '<button class="btn btn-primary btn-sm" data-act="add-day">Add day</button>';
+  html += '</div>';
+
+  html += '</div>';
+
+  region.innerHTML = html;
+
+  // Contract: colors are applied at runtime via applyDayColor (sets --day-color).
+  for (const day of model.days) {
+    const dot = region.querySelector('.mng-day-dot[data-day-color="' + day.id + '"]');
+    if (dot) applyDayColor(dot, day.color);
+    const nameInput = region.querySelector('.mng-day-name[data-day-id="' + day.id + '"]');
+    if (nameInput) applyDayColor(nameInput, day.color);
+  }
+}
+
+function wireManage() {
+  if (manageState.wired) return;
+  const region = document.getElementById('library-region');
+  region.addEventListener('click', onManageClick);
+  region.addEventListener('change', onManageChange);
+  manageState.wired = true;
+}
+
+function onManageClick(e) {
+  const region = document.getElementById('library-region');
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  const dayId = btn.dataset.dayId;
+  const exName = btn.dataset.exName;
+  try {
+    if (act === 'save') { doSave(); return; }
+    else if (act === 'day-up')     manageState.model = moveDay(manageState.model, dayId, -1);
+    else if (act === 'day-down')   manageState.model = moveDay(manageState.model, dayId, 1);
+    else if (act === 'day-remove') {
+      const day = manageState.model.days.find(d => d.id === dayId);
+      const msg = 'Remove “' + day.name + '”? Past workouts logged under this name stay in ' +
+                  'your history but lose their picker entry.';
+      if (!window.confirm(msg)) return;
+      manageState.model = removeDay(manageState.model, dayId);
+    }
+    else if (act === 'day-color')  manageState.model = setDayColor(manageState.model, dayId, btn.dataset.color);
+    else if (act === 'ex-up')      manageState.model = moveExercise(manageState.model, dayId, exName, -1);
+    else if (act === 'ex-down')    manageState.model = moveExercise(manageState.model, dayId, exName, 1);
+    else if (act === 'ex-remove')  manageState.model = removeExercise(manageState.model, dayId, exName);
+    else if (act === 'add-ex') {
+      const nameEl = region.querySelector('[data-field="new-ex-name"][data-day-id="' + dayId + '"]');
+      const setsEl = region.querySelector('[data-field="new-ex-sets"][data-day-id="' + dayId + '"]');
+      manageState.model = addExercise(manageState.model, dayId, nameEl.value, setsEl.value);
+    }
+    else if (act === 'add-day') {
+      const nameEl = document.getElementById('mng-new-day-name');
+      manageState.model = addDay(manageState.model, nameEl.value);
+    }
+    else return;
+    renderManage();
+  } catch (err) {
+    showToast(err.message, 'error', 3500);
+  }
+}
+
+function onManageChange(e) {
+  const el = e.target.closest('[data-field]');
+  if (!el) return;
+  const field = el.dataset.field;
+  const dayId = el.dataset.dayId;
+  const exName = el.dataset.exName;
+  try {
+    if (field === 'day-name')      manageState.model = renameDay(manageState.model, dayId, el.value);
+    else if (field === 'ex-name')  manageState.model = renameExercise(manageState.model, dayId, exName, el.value);
+    else if (field === 'ex-sets')  manageState.model = setDefaultSets(manageState.model, dayId, exName, el.value);
+    else return;
+    renderManage();
+  } catch (err) {
+    showToast(err.message, 'error', 3500);
+    renderManage(); // discard the invalid edit by restoring model values
+  }
+}
+
+async function saveExercisesModelWithRetry(model) {
+  try {
+    return await replaceExercisesContent(model, 'Update days & exercises (Manage)');
+  } catch (e) {
+    if (/\b409\b/.test(e.message)) {
+      // replaceExercisesContent re-reads the sha on each call, so retrying resolves a stale SHA.
+      return await replaceExercisesContent(model, 'Update days & exercises (Manage) — retry');
+    }
+    throw e;
+  }
+}
+
+async function renameDaysInHistoryWithRetry(renames) {
+  async function attempt() {
+    const { content, sha } = await getCSVFile();
+    let rows = parseWorkoutCSV(content);
+    for (const r of renames) rows = renameDayInRows(rows, r.oldName, r.newName);
+    return putToWorker('/csv', serializeWorkoutCSV(rows), sha, 'Rename workout day(s) in history (Manage)');
+  }
+  try {
+    return await attempt();
+  } catch (e) {
+    if (/\b409\b/.test(e.message)) return await attempt();
+    throw e;
+  }
+}
+
+async function doSave() {
+  if (manageState.saving) return;
+  const statusEl = document.getElementById('mng-save-status');
+  const statusText = document.getElementById('mng-save-status-text');
+  const renames = diffDayRenames(manageState.original, manageState.model);
+  const historyBox = document.getElementById('mng-rename-history');
+  const doHistory = renames.length > 0 && historyBox && historyBox.checked;
+
+  manageState.saving = true;
   statusEl.dataset.state = 'saving';
   statusText.textContent = 'Saving…';
 
   try {
-    const updated = await addExerciseToLibrary(day, name, sets);
-    libState.exercises = updated;
-    statusEl.dataset.state = 'saved';
-    statusText.textContent = 'Saved';
-    showToast('"' + name + '" added to ' + day, 'success');
-
-    nameInput.value = '';
-    setsInput.value = '3';
-
-    renderLibrary();
+    await saveExercisesModelWithRetry(manageState.model);
+    if (doHistory) {
+      statusText.textContent = 'Updating history…';
+      await renameDaysInHistoryWithRetry(renames);
+    }
+    // Re-pin the baseline so subsequent edits diff from the just-saved state.
+    manageState.original = adaptExercisesModel(JSON.parse(serializeExercisesModel(manageState.model)));
+    showToast('Changes saved', 'success');
+    renderManage();
+    document.getElementById('mng-save-status').dataset.state = 'saved';
+    document.getElementById('mng-save-status-text').textContent = 'Saved';
   } catch (e) {
     statusEl.dataset.state = 'error';
     statusText.textContent = 'Failed';
     showToast(e.message, 'error', 4000);
   } finally {
-    btn.disabled = false;
+    manageState.saving = false;
   }
 }
 </script>
