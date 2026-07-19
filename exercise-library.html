@@ -155,7 +155,7 @@
 
 const MANAGE_PALETTE = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#f472b6', '#4ade80', '#f87171', '#a3a3a3'];
 
-const manageState = { model: null, original: null, saving: false, wired: false };
+const manageState = { model: null, original: null, saving: false, wired: false, renameHistory: true };
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!WORKER_CONFIG.isConfigured) {
@@ -170,9 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function loadManage() {
@@ -208,7 +211,9 @@ function renderManage() {
   html += '</div>';
 
   if (renames.length > 0) {
-    html += '<label class="mng-rename-opt"><input type="checkbox" id="mng-rename-history" checked /> ' +
+    const checkedAttr = manageState.renameHistory ? ' checked' : '';
+    html += '<label class="mng-rename-opt"><input type="checkbox" id="mng-rename-history" ' +
+      'data-field="rename-history"' + checkedAttr + ' /> ' +
       'Also rename ' +
       renames.map(r => '“' + escapeHtml(r.oldName) + '”→“' + escapeHtml(r.newName) + '”').join(', ') +
       ' in past workout history</label>';
@@ -332,6 +337,7 @@ function onManageChange(e) {
     if (field === 'day-name')      manageState.model = renameDay(manageState.model, dayId, el.value);
     else if (field === 'ex-name')  manageState.model = renameExercise(manageState.model, dayId, exName, el.value);
     else if (field === 'ex-sets')  manageState.model = setDefaultSets(manageState.model, dayId, exName, el.value);
+    else if (field === 'rename-history') { manageState.renameHistory = el.checked; return; }
     else return;
     renderManage();
   } catch (err) {
@@ -372,8 +378,7 @@ async function doSave() {
   const statusEl = document.getElementById('mng-save-status');
   const statusText = document.getElementById('mng-save-status-text');
   const renames = diffDayRenames(manageState.original, manageState.model);
-  const historyBox = document.getElementById('mng-rename-history');
-  const doHistory = renames.length > 0 && historyBox && historyBox.checked;
+  const doHistory = renames.length > 0 && manageState.renameHistory;
 
   manageState.saving = true;
   statusEl.dataset.state = 'saving';
