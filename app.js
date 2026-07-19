@@ -229,19 +229,6 @@ function serializeRecordsCSV(records) {
   return [header].concat(lines).join('\n') + '\n';
 }
 
-function groupByDate(rows) {
-  const map = new Map();
-  for (const row of rows) {
-    if (!map.has(row.date)) map.set(row.date, []);
-    map.get(row.date).push(row);
-  }
-  return new Map([...map.entries()].sort((a, b) => b[0].localeCompare(a[0])));
-}
-
-function getSessionsOnDate(rows, dateStr) {
-  return rows.filter(r => r.date === dateStr);
-}
-
 function getDatesWithData(rows) {
   return new Set(rows.map(r => r.date));
 }
@@ -581,10 +568,6 @@ function showToast(message, type, duration) {
   toast._timer = setTimeout(() => {
     toast.classList.remove('show');
   }, duration);
-}
-
-function formatVolume(n) {
-  return Math.round(n).toLocaleString('en-US');
 }
 
 function formatLoad(n) {
