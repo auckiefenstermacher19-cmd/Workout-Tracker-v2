@@ -1,0 +1,36 @@
+name: Strip stale loop-approved
+
+# GitHub labels are PR-scoped, not commit-scoped. `loop-approved` records that
+# the reviewer found no must-fix findings *at one specific commit*. A commit
+# landing after that verdict — while the reviewer window is closed, which is the
+# documented evening state — leaves the label in place on code nothing reviewed.
+#
+# The documented merge procedure ("look for loop-approved") cannot detect this.
+# This workflow converts the prompt-level promise into a fact: any new commit on
+# an open PR drops the approval, and the reviewer must earn it again.
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  strip:
+    name: strip-stale-approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove loop-approved
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh api --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$REPO/issues/$PR/labels/loop-approved" >/dev/null 2>&1; then
+            echo "Removed loop-approved from PR #$PR — new commits invalidate the previous review."
+          else
+            echo "loop-approved was not present on PR #$PR; nothing to strip."
+          fi

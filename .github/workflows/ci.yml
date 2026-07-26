@@ -1,0 +1,30 @@
+name: CI
+
+# Finn-loop requires at least one required status check on the default branch.
+# `finn-review` escalates any PR in a repo with no required checks — missing CI
+# is never treated as green — so this workflow is what makes the loop able to
+# reach a `loop-approved` verdict at all.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Quoted so node expands the glob, not the shell. Passing the bare
+      # directory makes node treat `tests` itself as a test file and fail.
+      - name: Run tests
+        run: node --test 'tests/**/*.test.js'
