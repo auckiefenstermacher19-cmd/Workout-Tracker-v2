@@ -964,12 +964,14 @@ function createSetGridRow(num, lastSetData, weightVal, repsVal, isSuperset, weig
     cell.appendChild(inputs);
 
     // Personal-best badge. Hidden until applyPersonalBests() reveals it, which
-    // only happens once the session has saved -- never mid-typing.
+    // only happens once the session has saved -- never mid-typing. It sits
+    // between the two labels as a flex item rather than floating over the cell,
+    // so it cannot cover them in the narrower superset columns.
     const pb = document.createElement('span');
     pb.className = 'set-pb-badge hidden';
     pb.textContent = 'PB';
     pb.title = 'Personal best';
-    cell.appendChild(pb);
+    labels.insertBefore(pb, labels.children[1]);
 
     [wInput, rInput].forEach(inp => {
       inp.addEventListener('input', () => {
@@ -1091,18 +1093,18 @@ function recalcWorkoutLoad() {
 }
 
 function updateExerciseLoadDisplays() {
+  // Read through buildExercisesMapFromDOM rather than re-querying the inputs
+  // here: it is the one reader that understands superset rows, whose inputs
+  // carry -a/-b suffixes. Querying '.set-input-weight' directly returned null
+  // on those rows and threw, which aborted handleInputChange before it could
+  // save, and left the superset card's load showing zero.
+  const list = document.getElementById('exercise-list');
+  const exMap = buildExercisesMapFromDOM(list);
+
   document.querySelectorAll('.exercise-card').forEach(card => {
     const name = card.dataset.exercise;
-    const setRows = card.querySelectorAll('.set-grid-row');
-    const sets = [];
-    setRows.forEach(row => {
-      const w = parseFloat(row.querySelector('.set-input-weight').value);
-      const r = parseInt(row.querySelector('.set-input-reps').value, 10);
-      if (!isNaN(w) && w > 0 && !isNaN(r) && r > 0) sets.push({ weight: w, reps: r });
-    });
-    const load = calcExerciseLoad(sets);
     const loadEl = card.querySelector('[data-role="exercise-load"]');
-    if (loadEl) loadEl.textContent = formatLoad(load);
+    if (loadEl) loadEl.textContent = formatLoad(calcExerciseLoad(exMap.get(name) || []));
   });
 }
 

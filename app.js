@@ -949,16 +949,35 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
 
     orderNames.push(name);
 
+    // Must agree with buildExercisesMapFromDOM above: a superset row carries an
+    // A and a B pair under -a/-b suffixed classes, and reading only the
+    // unsuffixed ones drafts the row as empty and loses it on resume.
+    const isSuperset = block.dataset.superset === 'true';
     const setRows = block.querySelectorAll('.set-row');
     const sets = [];
 
     for (const row of setRows) {
-      const weightInput = row.querySelector('.input-weight');
-      const repsInput   = row.querySelector('.input-reps');
-      sets.push({
-        weight: weightInput ? weightInput.value : '',
-        reps:   repsInput   ? repsInput.value   : ''
-      });
+      if (isSuperset) {
+        const weightA = row.querySelector('.input-weight-a') || row.querySelector('.input-weight');
+        const repsA   = row.querySelector('.input-reps-a')   || row.querySelector('.input-reps');
+        const weightB = row.querySelector('.input-weight-b');
+        const repsB   = row.querySelector('.input-reps-b');
+        // One entry per DOM row: the resume path sizes the set grid from this
+        // length, so a row must not expand into separate A and B entries.
+        sets.push({
+          weight:  weightA ? weightA.value : '',
+          reps:    repsA   ? repsA.value   : '',
+          weightB: weightB ? weightB.value : '',
+          repsB:   repsB   ? repsB.value   : ''
+        });
+      } else {
+        const weightInput = row.querySelector('.input-weight');
+        const repsInput   = row.querySelector('.input-reps');
+        sets.push({
+          weight: weightInput ? weightInput.value : '',
+          reps:   repsInput   ? repsInput.value   : ''
+        });
+      }
     }
 
     exercises[name] = sets;
@@ -971,5 +990,8 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
 // function above stays a plain global (core.js globals like csvField resolve at call
 // time exactly as before). No behavior change for the PWA.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { serializeRecordsCSV, parseRecordsCSV, escapeHtml };
+  module.exports = {
+    serializeRecordsCSV, parseRecordsCSV, escapeHtml,
+    serializeSessionForStorage, buildExercisesMapFromDOM
+  };
 }
