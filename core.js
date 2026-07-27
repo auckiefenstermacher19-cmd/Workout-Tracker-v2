@@ -151,6 +151,83 @@
     return groups;
   }
 
+  /* ─── Logger history: last session's numbers + personal-best badge ─── */
+
+  // Superset sets carry an A/B suffix on the set number ("1A"/"1B"). A and B
+  // are different movements sharing one exercise name, so every comparison is
+  // scoped to the slot. Non-superset sets share the single '' slot.
+  function setSlot(setNumber) {
+    const m = /([AB])$/i.exec(String(setNumber == null ? '' : setNumber));
+    return m ? m[1].toUpperCase() : '';
+  }
+
+  // True when `row` belongs to a session strictly earlier than the one being
+  // logged. Ordering is (date, sessionId); session ids are YYYY-MM-DD-HHMMSS,
+  // so two sessions on one day order correctly and the second sees the first.
+  function isEarlierSession(row, currentSessionId, currentDate) {
+    if (row.sessionId === currentSessionId) return false;
+    if (row.date !== currentDate) return row.date < currentDate;
+    return String(row.sessionId) < String(currentSessionId);
+  }
+
+  function compareSetNumber(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric: true });
+  }
+
+  // Sets of the most recent earlier session that contains `exerciseName`,
+  // whatever workout day it was logged under. [] when there is no such session.
+  function lastSessionSets(rows, exerciseName, currentSessionId, currentDate) {
+    const prior = (rows || []).filter(function (r) {
+      return r.exercise === exerciseName &&
+        isEarlierSession(r, currentSessionId, currentDate);
+    });
+    if (prior.length === 0) return [];
+
+    let latest = null;
+    for (const r of prior) {
+      if (latest === null ||
+          r.date > latest.date ||
+          (r.date === latest.date && String(r.sessionId) > String(latest.sessionId))) {
+        latest = { date: r.date, sessionId: r.sessionId };
+      }
+    }
+
+    return prior
+      .filter(function (r) { return r.sessionId === latest.sessionId; })
+      .map(function (r) {
+        return { setNumber: r.setNumber, weight: r.weight, reps: r.reps };
+      })
+      .sort(function (a, b) { return compareSetNumber(a.setNumber, b.setNumber); });
+  }
+
+  // One boolean per entry of `currentSets`, in order: does this set beat every
+  // weight logged at the same rep count (and, for supersets, the same slot)?
+  // The bar starts at the pre-session best and rises as earlier sets in this
+  // session clear it, so a later set that merely ties an earlier one gets no
+  // badge. Strictly greater than — ties never count.
+  function markPersonalBests(rows, exerciseName, currentSets, currentSessionId, currentDate) {
+    const best = new Map(); // slot + '|' + reps -> heaviest weight seen
+    for (const r of (rows || [])) {
+      if (r.exercise !== exerciseName) continue;
+      if (!isEarlierSession(r, currentSessionId, currentDate)) continue;
+      const w = parseFloat(r.weight);
+      const reps = parseInt(r.reps, 10);
+      if (!(w > 0) || !(reps > 0)) continue;
+      const key = setSlot(r.setNumber) + '|' + reps;
+      if (!best.has(key) || w > best.get(key)) best.set(key, w);
+    }
+
+    return (currentSets || []).map(function (s) {
+      const w = parseFloat(s.weight);
+      const reps = parseInt(s.reps, 10);
+      if (!(w > 0) || !(reps > 0)) return false; // nothing usable logged yet
+      const key = setSlot(s.setNumber) + '|' + reps;
+      if (best.has(key) && w <= best.get(key)) return false;
+      best.set(key, w);
+      return true;
+    });
+  }
+
   /* ─── Build & save one session's rows (replaces old rebuildRowObjects) ─── */
   function rebuildSessionRows(sessionId, date, workoutDay, exercisesMap) {
     const totalWorkoutLoad = calcWorkoutLoad(exercisesMap);
@@ -536,6 +613,8 @@
     combinedDayLoad: combinedDayLoad,
     weekLoad: weekLoad,
     sessionsOnDate: sessionsOnDate,
+    lastSessionSets: lastSessionSets,
+    markPersonalBests: markPersonalBests,
     rebuildSessionRows: rebuildSessionRows,
     commitReplaceSession: commitReplaceSession,
     renameDayInRows: renameDayInRows,
