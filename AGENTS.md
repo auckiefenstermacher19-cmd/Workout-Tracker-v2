@@ -94,8 +94,12 @@ merge.**
 
 | Limit | Value | Enforced where |
 |---|---|---|
-| In Progress, per team | **1** | `finn-build` §3 claim-and-recheck |
+| In Progress, per team | **1** | `finn-build` §0, after the orphan sweep |
 | In Review, board-wide | **5** | hard stop in `finn-spec` §0 and `finn-build` §2 |
+
+Both counts are measured from live state. In Review is counted from **open
+PRs**, not the Linear column — no agent may set Done, so a merged PR's issue
+stays in In Review and counting the column would freeze the board at five.
 
 Enforced at the **intake, not the outflow**: when review is backed up,
 `finn-build` still fixes `loop-changes-requested` PRs (its step 1) — that is the
