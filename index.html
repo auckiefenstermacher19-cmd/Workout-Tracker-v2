@@ -102,7 +102,7 @@ const state = {
   exercises:    [],
   csvRows:      [],
   csvLoaded:    false,
-  lastSession:  new Map()
+  sessionId:    null
 };
 
 let EXERCISES = null;
@@ -303,6 +303,7 @@ function handleAutosaveStatus(status, detail) {
   } else if (status === 'saved') {
     setSaveStatus('saved', 'Saved');
     renderResumeBanners();
+    applyPersonalBests();
   } else if (status === 'error') {
     setSaveStatus('error', 'Save failed');
     showToast('Save failed: ' + (detail || 'unknown error'), 'error', 5000);
@@ -962,6 +963,14 @@ function createSetGridRow(num, lastSetData, weightVal, repsVal, isSuperset, weig
     inputs.appendChild(rInput);
     cell.appendChild(inputs);
 
+    // Personal-best badge. Hidden until applyPersonalBests() reveals it, which
+    // only happens once the session has saved -- never mid-typing.
+    const pb = document.createElement('span');
+    pb.className = 'set-pb-badge hidden';
+    pb.textContent = 'PB';
+    pb.title = 'Personal best';
+    cell.appendChild(pb);
+
     [wInput, rInput].forEach(inp => {
       inp.addEventListener('input', () => {
         cell.classList.toggle('unfilled', !wInput.value && !rInput.value);
@@ -1097,6 +1106,51 @@ function updateExerciseLoadDisplays() {
   });
 }
 
+/**
+ * applyPersonalBests()
+ * Re-derives every PB badge on screen from the saved numbers. Called only
+ * after a save completes and on history load, so a badge never appears while
+ * a weight or rep count is still being typed. Because it is a pure re-derive
+ * from state.csvRows plus what is in the inputs, a reload reproduces exactly
+ * the same badges.
+ */
+function applyPersonalBests() {
+  if (!state.csvLoaded) return; // no baseline fetched yet -- badge nothing
+  const today = todayISO();
+
+  document.querySelectorAll('.exercise-card').forEach(card => {
+    const name = card.dataset.exercise;
+    if (!name) return;
+    const isSuperset = card.dataset.superset === 'true';
+    const sets = [];
+    const badges = [];
+
+    card.querySelectorAll('.set-grid-row').forEach((row, idx) => {
+      const num = row.dataset.round || String(idx + 1);
+      const slots = isSuperset
+        ? [{ suffix: '-a', label: 'A' }, { suffix: '-b', label: 'B' }]
+        : [{ suffix: '', label: '' }];
+
+      slots.forEach(slot => {
+        const w = row.querySelector('.set-input-weight' + slot.suffix);
+        const r = row.querySelector('.set-input-reps' + slot.suffix);
+        if (!w || !r) return;
+        sets.push({
+          setNumber: num + slot.label,
+          weight: parseFloat(w.value),
+          reps: parseInt(r.value, 10)
+        });
+        badges.push(w.closest('.set-cell-today').querySelector('.set-pb-badge'));
+      });
+    });
+
+    const flags = markPersonalBests(state.csvRows, name, sets, state.sessionId, today);
+    flags.forEach((isBest, i) => {
+      if (badges[i]) badges[i].classList.toggle('hidden', !isBest);
+    });
+  });
+}
+
 /* ── Load history (last session) + streak notes, async ────────── */
 async function loadHistoryAndStreaks(day) {
   try {
@@ -1105,8 +1159,6 @@ async function loadHistoryAndStreaks(day) {
     state.csvLoaded = true;
 
     const today = todayISO();
-    state.lastSession = getLastSession(state.csvRows, day, today);
-
     applyHistoryToCards(day, today);
   } catch (e) {
     showToast('History unavailable — check config.js', 'error', 4000);
@@ -1128,6 +1180,7 @@ function applyHistoryToCards(day, today) {
     applyHistoryToSingleCard(card, name, day, today);
   });
 
+  applyPersonalBests();
   updateExerciseLoadDisplays();
 }
 
@@ -1144,8 +1197,10 @@ function applyHistoryToCards(day, today) {
  * mid-entry and an unexpected row-count change would be disruptive.
  */
 function applyHistoryToSingleCard(card, exerciseName, day, today) {
-  const histData = state.lastSession.get(exerciseName);
-  const histSets = histData ? histData.sets : [];
+  // Scoped to the exercise, not the workout day: the reference numbers come
+  // from the most recent earlier session that contained this exercise, whatever
+  // day it was logged under, and a day logged twice sees its own first session.
+  const histSets = lastSessionSets(state.csvRows, exerciseName, state.sessionId, today);
   const isSuperset = card.dataset.superset === 'true';
 
   const setsContainer = card.querySelector('.sets-container');
