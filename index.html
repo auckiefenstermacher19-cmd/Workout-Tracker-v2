@@ -1163,7 +1163,11 @@ async function loadHistoryAndStreaks(day) {
     const today = todayISO();
     applyHistoryToCards(day, today);
   } catch (e) {
-    showToast('History unavailable — check config.js', 'error', 4000);
+    // Log first: the toast is transient and the message is deliberately vague
+    // about the cause, so the console is the only durable record of what
+    // actually failed. Never swallow the error.
+    console.error('Workout Tracker: history failed to load', e);
+    showToast(historyFailureMessage(e, WORKER_CONFIG.isConfigured), 'error', 4000);
   }
 }
 

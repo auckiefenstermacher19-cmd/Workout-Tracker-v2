@@ -151,6 +151,18 @@
     return groups;
   }
 
+  /* ─── Logger history: failure reporting ─── */
+
+  // Which message to show when the logger cannot load history. An unconfigured
+  // Worker is the only cause that is genuinely a config.js problem; naming that
+  // file for anything else sends the reader to the wrong place and hides the
+  // real fault. The caught error is logged separately, never swallowed.
+  function historyFailureMessage(err, isConfigured) {
+    return isConfigured
+      ? 'History could not be loaded — see the browser console for details'
+      : 'History unavailable — set your Worker URL in config.js';
+  }
+
   /* ─── Logger history: last session's numbers + personal-best badge ─── */
 
   // Superset sets carry an A/B suffix on the set number ("1A"/"1B"). A and B
@@ -613,6 +625,7 @@
     combinedDayLoad: combinedDayLoad,
     weekLoad: weekLoad,
     sessionsOnDate: sessionsOnDate,
+    historyFailureMessage: historyFailureMessage,
     lastSessionSets: lastSessionSets,
     markPersonalBests: markPersonalBests,
     rebuildSessionRows: rebuildSessionRows,
