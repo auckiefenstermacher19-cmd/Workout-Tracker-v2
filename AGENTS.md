@@ -319,6 +319,37 @@ DryDock's Architect → Builder → Verifier agents remain available. What chang
   `bulk`, and its output returns through normal verification and a single PR.
 - DryDock never opens its own PRs outside the loop and never merges.
 
+## Branch protection — `enforce_admins` must stay disabled
+
+**This repo is not only code. The deployed app writes its own data files
+straight to `main` through the GitHub Contents API** — `workout_tracker.csv`,
+`personal_records.csv` and `exercises.json`, via the Cloudflare Worker. That
+makes the loop's branch protection and the application's save path share one
+branch, and they collide.
+
+The required `test` check is what lets `/finn-review` reach a verdict, so it
+stays. But an API write produces no CI run and can never satisfy it. With
+`enforce_admins: true`, not even the owner's own token is exempt, so **every
+save fails with `409 Conflict — Could not update file: Required status check
+"test" is expected.`**
+
+Required state on `main`:
+
+```json
+{"required_checks": ["test"], "strict": true, "enforce_admins": false}
+```
+
+`enforce_admins: false` is load-bearing. Do not re-enable it, and do not treat
+it as a hardening opportunity — it is the exemption that lets the app save at
+all. PRs stay gated by `test` regardless; the setting only exempts the admin
+token the Worker uses.
+
+This was not hypothetical: `f616129` ("Wire Finn-loop") enabled it on
+2026-07-26 and silently broke every save until INC-111 diagnosed it on
+2026-08-05. Eleven days, no workouts recorded. **Any repo where a deployed app
+writes back to its own protected branch inherits this constraint** — check it
+before wiring the loop into one.
+
 ## Environment notes (Auckie's machine)
 
 ```
