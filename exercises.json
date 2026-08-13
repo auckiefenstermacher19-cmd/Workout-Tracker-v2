@@ -34,11 +34,11 @@
       "color": "#fb923c",
       "exercises": [
         {
-          "name": "Flat Bench",
+          "name": "BB Flat Bench",
           "defaultSets": 4
         },
         {
-          "name": "Incline Bench",
+          "name": "BB Incline Bench",
           "defaultSets": 4
         },
         {
@@ -50,7 +50,11 @@
           "defaultSets": 3
         },
         {
-          "name": "Machine Cheat Press",
+          "name": "Machine Chest Press",
+          "defaultSets": 4
+        },
+        {
+          "name": "DB Incline Bench",
           "defaultSets": 4
         }
       ]
