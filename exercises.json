@@ -56,6 +56,10 @@
         {
           "name": "DB Incline Bench",
           "defaultSets": 4
+        },
+        {
+          "name": "Machine Incline",
+          "defaultSets": 4
         }
       ]
     },
