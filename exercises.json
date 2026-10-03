@@ -118,6 +118,10 @@
         {
           "name": "BB shoulder Press",
           "defaultSets": 4
+        },
+        {
+          "name": "Cable Lat Raise",
+          "defaultSets": 3
         }
       ]
     },
