@@ -87,6 +87,10 @@
         {
           "name": "Cable Curls",
           "defaultSets": 3
+        },
+        {
+          "name": "T bar Row",
+          "defaultSets": 3
         }
       ]
     },
