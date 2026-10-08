@@ -1,0 +1,11 @@
+# Agent and tool workspaces
+.serena/
+.claude/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
