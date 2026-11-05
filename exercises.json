@@ -126,6 +126,10 @@
         {
           "name": "Cable Lat Raise",
           "defaultSets": 3
+        },
+        {
+          "name": "Archer Pulls",
+          "defaultSets": 3
         }
       ]
     },
