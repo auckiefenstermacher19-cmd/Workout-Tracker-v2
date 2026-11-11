@@ -260,7 +260,12 @@ async function startSession(day, resume) {
   // is populated by loadHistoryAndStreaks and persists across day switches) so a
   // same-second collision against a real committed session gets a -2 suffix; on a
   // cold start (no CSV fetched yet) state.csvRows is [] and this is a no-op.
-  let sid = resume ? loadSessionId(day) : null;
+  // The draft carries its own session id: tapping the day tile (which mints a
+  // fresh id) then Resume must not commit the old draft a second time under the
+  // new id. loadSessionId stays as the fallback for drafts saved before this.
+  const savedData = loadFromLocalStorage(day);
+  let sid = resume ? ((savedData && savedData.sessionId) || loadSessionId(day)) : null;
+  if (sid) saveSessionId(day, sid);
   if (!sid) {
     const takenIds = state.csvRows.map(r => r.sessionId);
     sid = makeSessionId(new Date(), takenIds);
@@ -279,14 +284,15 @@ async function startSession(day, resume) {
 
   showScreen('screen-session');
 
-  const savedData = loadFromLocalStorage(day);
   buildExerciseList(state.exercises, resume && savedData ? savedData : null);
 
   // Wire the autosave engine for this session
   autosave = createAutosaveEngine({
     debounceMs: 1500,
     onStatusChange: handleAutosaveStatus,
-    getDate: () => todayISO(),
+    // The day the session started, not "today": resuming an old draft or
+    // lifting past midnight must not move the workout to another date.
+    getDate: () => sessionDateFromId(state.sessionId, todayISO()),
     getWorkoutDay: () => state.currentDay,
     getExercisesMap: () => buildExercisesMapFromDOM(document.getElementById('exercise-list')),
     getSessionId: () => state.sessionId
@@ -827,7 +833,13 @@ function buildExerciseCard(ex, savedData) {
   const gridHeader = document.createElement('div');
   gridHeader.className = 'set-grid-header' + (isSuperset ? ' set-grid-header-superset' : '');
   if (isSuperset) {
-    gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today (A)</span><span>Today (B)</span>';
+    // Name the two halves when the name is "Superset: A / B"; else plain A/B.
+    const parts = supersetParts(ex.name);
+    const labelA = parts ? 'A · ' + escapeHtmlIndex(parts.a) : 'Today (A)';
+    const labelB = parts ? 'B · ' + escapeHtmlIndex(parts.b) : 'Today (B)';
+    gridHeader.innerHTML = '<span>#</span><span>Last time</span>' +
+      '<span class="set-grid-header-ss-name">' + labelA + '</span>' +
+      '<span class="set-grid-header-ss-name">' + labelB + '</span>';
   } else {
     gridHeader.innerHTML = '<span>#</span><span>Last time</span><span>Today</span>';
   }
@@ -1079,6 +1091,7 @@ function handleInputChange() {
   // Instant localStorage save (zero data loss even before GitHub commit)
   const list = document.getElementById('exercise-list');
   const data = serializeSessionForStorage(list, state.currentDay);
+  data.sessionId = state.sessionId; // read back on Resume, see startSession
   saveToLocalStorage(state.currentDay, data);
 
   // Debounced GitHub commit
@@ -1271,7 +1284,7 @@ function applyHistoryToSingleCard(card, exerciseName, day, today) {
     streakEl.classList.remove('hidden');
     streakEl.innerHTML =
       '<span>' + formatWeight(streak.weight) + '\u00d7' + streak.reps +
-      ' on ' + exerciseName + ' for the last ' + streak.count + ' sessions</span>';
+      ' on ' + escapeHtmlIndex(exerciseName) + ' for the last ' + streak.count + ' sessions</span>';
   } else {
     streakEl.classList.add('hidden');
     streakEl.innerHTML = '';

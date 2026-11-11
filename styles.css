@@ -150,7 +150,11 @@ p, li {
   background: var(--bg-base);
   border-bottom: 1px solid var(--border-subtle);
   padding: var(--space-3) var(--space-4);
-  padding-top: max(var(--space-3), env(safe-area-inset-top));
+  /* Clear the status bar / notch with room to spare, and the side notch
+     when the phone is held sideways, so the back arrow is always tappable. */
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--space-3));
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   display: flex;
   flex-wrap: wrap;                 /* nav drops to its own row on narrow phones */
   align-items: center;
@@ -485,7 +489,10 @@ p, li {
   background: var(--bg-base);
   border-bottom: 1px solid var(--border-subtle);
   padding: var(--space-3) var(--space-4);
-  padding-top: max(var(--space-3), env(safe-area-inset-top));
+  /* Same safe-area clearance as .page-header -- keeps the back arrow tappable. */
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--space-3));
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -633,9 +640,15 @@ p, li {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  /* Up to two lines before cutting off, so names like "Skull Crushers" or a
+     superset's "Superset: A / B" stay readable next to the header buttons. */
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .exercise-card-chevron {
@@ -653,14 +666,17 @@ p, li {
 /* Swap dropdown in the card header */
 .exercise-swap-select {
   height: 32px;
-  max-width: 92px;
+  max-width: 78px; /* fits "Swap ↓" at 16px without crowding the exercise name */
   padding: 0 var(--space-2);
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: 0.75rem;
+  /* 16px minimum: iOS Safari zooms the whole page in when a control under
+     16px gets focus, and stays zoomed -- that pushed the top-left back
+     arrow off screen after using Swap. */
+  font-size: 1rem;
   cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
@@ -760,7 +776,7 @@ p, li {
   width: 100%;
   max-width: none;
   height: var(--tap-min);
-  font-size: 0.875rem;
+  font-size: 1rem; /* 16px: stops iOS focus-zoom, see .exercise-swap-select */
 }
 
 .exercise-card.collapsed .exercise-card-body {
@@ -950,6 +966,14 @@ p, li {
   text-align: center;
 }
 
+/* Exercise names over the A/B columns: wrap to two lines rather than cut */
+.set-grid-header-superset .set-grid-header-ss-name {
+  min-width: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  align-self: end;
+}
+
 .set-grid-row-superset {
   display: grid;
   grid-template-columns: 24px 1fr 1fr 1fr 20px;
@@ -1077,6 +1101,8 @@ p, li {
   border-top: 1px solid var(--border-subtle);
   padding: var(--space-3) var(--space-4);
   padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: column;
   gap: var(--space-3);

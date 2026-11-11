@@ -370,10 +370,14 @@ async function commitEditOrder() {
   if (!sessionId || !order) return;
   try {
     showToast('Saving order…');
-    // Re-read fresh so the session-keyed rewrite never clobbers a concurrent edit.
-    const fresh     = parseWorkoutCSV(await getRawCSV());
-    const reordered = reorderSessionExercises(fresh, sessionId, order);
-    await replaceCSVContent(serializeWorkoutCSV(reordered), 'Reorder exercises — ' + dash.currentDate);
+    // Content and sha come from ONE read, so an autosave that lands mid-way
+    // makes this write 409 (and retry on fresh data) instead of wiping it.
+    const reordered = await withConflictRetry(async () => {
+      const file = await getCSVFile();
+      const rows = reorderSessionExercises(parseWorkoutCSV(file.content), sessionId, order);
+      await putToWorker('/csv', serializeWorkoutCSV(rows), file.sha, 'Reorder exercises — ' + dash.currentDate);
+      return rows;
+    });
     dash.rows          = reordered;
     dash.datesWithData = getDatesWithData(dash.rows);
     dash.editSessionId = null;

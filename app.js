@@ -736,22 +736,17 @@ function createAutosaveEngine(opts) {
       return;
     }
 
+    // An empty map still goes through commitTodaysWorkout: if this session
+    // already has saved rows (sets typed, then cleared), they must be deleted.
+    // commitTodaysWorkout skips the write when there is nothing to delete.
     const exMap = getExercisesMap();
-    let hasAnyValidSet = false;
-    for (const entry of exMap) {
-      if (entry[1].length > 0) { hasAnyValidSet = true; break; }
-    }
-    if (!hasAnyValidSet) {
-      onStatusChange('idle');
-      return;
-    }
 
     isSaving = true;
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
-      onStatusChange('saved');
+      const result = await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
+      onStatusChange(result === null ? 'idle' : 'saved');
     } catch (e) {
       onStatusChange('error', e.message);
     } finally {
@@ -794,25 +789,19 @@ function createAutosaveEngine(opts) {
       }
     }
 
+    // Nothing to save is not an error -- an empty/unstarted session can still
+    // be "completed". But an emptied session that was saved earlier must still
+    // commit so its stale rows are removed (commitTodaysWorkout returns null
+    // when there was nothing to write or delete).
     const exMap = getExercisesMap();
-    let hasAnyValidSet = false;
-    for (const entry of exMap) {
-      if (entry[1].length > 0) { hasAnyValidSet = true; break; }
-    }
-    if (!hasAnyValidSet) {
-      // Nothing to save is not an error -- an empty/unstarted
-      // session can still be "completed" (e.g. a rest day check-in).
-      onStatusChange('idle');
-      return { ok: true, empty: true };
-    }
 
     isSaving = true;
     onStatusChange('saving');
 
     try {
-      await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
-      onStatusChange('saved');
-      return { ok: true };
+      const result = await commitTodaysWorkout(getDate(), getWorkoutDay(), exMap, getSessionId());
+      onStatusChange(result === null ? 'idle' : 'saved');
+      return result === null ? { ok: true, empty: true } : { ok: true };
     } catch (e) {
       onStatusChange('error', e.message);
       return { ok: false, message: e.message };
@@ -824,23 +813,47 @@ function createAutosaveEngine(opts) {
   return { scheduleSave: scheduleSave, flush: flush, forceFlush: forceFlush, completeFlush: completeFlush };
 }
 
-async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
-  const fileData = await getCSVFile();
-  const content = fileData.content;
-  const sha = fileData.sha;
-  const allRows = parseWorkoutCSV(content);
+/**
+ * withConflictRetry(fn, attempts)
+ * Runs fn (which must re-read the file and its sha itself) and retries when
+ * the write loses a race and GitHub answers 409 -- e.g. the previous save
+ * from Back is still landing when you Resume and type, or a second device.
+ */
+async function withConflictRetry(fn, attempts) {
+  const max = attempts || 3;
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const conflict = e.status === 409 || /\b409\b/.test(e.message || '');
+      if (!conflict || i >= max) throw e;
+      await new Promise(r => setTimeout(r, 400 * i));
+    }
+  }
+}
 
+/**
+ * commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId)
+ * Replaces this session's rows in the CSV. Returns null (no write) when the
+ * map is empty and the session has nothing saved yet to delete.
+ */
+async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   // Fall back to the legacy date+day key if no explicit id (keeps this commit
   // functional before the index.html session-id lifecycle task lands).
   const sid = (sessionId != null && sessionId !== '') ? sessionId : (date + '|' + workoutDay);
-  const newSessionRows = rebuildSessionRows(sid, date, workoutDay, exercisesMap);
-  const merged = commitReplaceSession(allRows, sid, newSessionRows);
-  const csvText = serializeWorkoutCSV(merged);
 
-  const result = await putToWorker('/csv', csvText, sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
+  const result = await withConflictRetry(async () => {
+    const fileData = await getCSVFile();
+    const allRows = parseWorkoutCSV(fileData.content);
+    if (exercisesMap.size === 0 && !allRows.some(r => r.sessionId === sid)) return null;
+    const newSessionRows = rebuildSessionRows(sid, date, workoutDay, exercisesMap);
+    const merged = commitReplaceSession(allRows, sid, newSessionRows);
+    return putToWorker('/csv', serializeWorkoutCSV(merged), fileData.sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
+  });
+  if (result === null) return null;
 
   try {
-    await updateRecordsFromSession(exercisesMap, date);
+    await withConflictRetry(() => updateRecordsFromSession(exercisesMap, date));
   } catch (e) {
     console.warn('Personal records update failed:', e);
   }

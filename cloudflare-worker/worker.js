@@ -79,6 +79,15 @@ async function githubFetch(env, path, options) {
   });
 }
 
+// GitHub returns base64 of UTF-8 bytes. atob() alone yields one char per byte
+// (Latin-1), which garbled any non-ASCII name -- e.g. an iPhone smart
+// apostrophe in "Farmer’s Carry" -- and the garbling grew on every save,
+// because the write path encodes UTF-8. Decode the bytes as UTF-8 to match.
+function decodeBase64Utf8(b64) {
+  const bin = atob(b64.replace(/\n/g, ''));
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+}
+
 async function handleGetFile(env, filePath) {
   const res = await githubFetch(env, '/repos/' + env.GITHUB_OWNER + '/' + env.GITHUB_REPO + '/contents/' + filePath);
 
@@ -89,7 +98,7 @@ async function handleGetFile(env, filePath) {
 
   const json = await res.json();
   // Decode base64 content here on the server so the app gets plain text directly
-  const decoded = atob(json.content.replace(/\n/g, ''));
+  const decoded = decodeBase64Utf8(json.content);
 
   return jsonResponse({ content: decoded, sha: json.sha }, 200, env);
 }
@@ -143,7 +152,7 @@ async function handleRawFile(env, filePath) {
   }
 
   const json = await res.json();
-  const decoded = atob(json.content.replace(/\n/g, ''));
+  const decoded = decodeBase64Utf8(json.content);
 
   return textResponse(decoded, 200, env);
 }

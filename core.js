@@ -40,6 +40,15 @@
     return id;
   }
 
+  // The date a session STARTED, read from its id (YYYY-MM-DD-HHMMSS). Saves use
+  // this instead of "today" so resuming an old draft, or a workout that runs past
+  // midnight, never moves the workout onto a different day. Falls back for
+  // legacy "date|day" ids or anything unparseable.
+  function sessionDateFromId(sessionId, fallbackISO) {
+    const m = /^(\d{4}-\d{2}-\d{2})-\d{6}/.exec(String(sessionId == null ? '' : sessionId));
+    return m ? m[1] : fallbackISO;
+  }
+
   /* ─── Workout CSV (10-col; Session Id appended last for BC) ─── */
   const CSV_HEADER =
     'Date,Workout Day,Exercise,Set Number,Weight,Reps,Load,Exercise Load,Total Workout Load,Session Id';
@@ -612,7 +621,28 @@
     return next;
   }
 
+  // A superset is stored as ONE exercise whose name contains "superset";
+  // the logger then shows two weight x reps pairs per set (A and B) and the
+  // CSV labels them 1A/1B. These two helpers build and read the canonical
+  // "Superset: A / B" name so Manage can create one without hand-typing it.
+  function makeSupersetName(nameA, nameB) {
+    var a = (nameA || '').trim();
+    var b = (nameB || '').trim();
+    if (!a || !b) throw new Error('Pick both exercises for the superset');
+    if (a.toLowerCase() === b.toLowerCase()) throw new Error('A superset needs two different exercises');
+    if (a.indexOf('/') !== -1 || b.indexOf('/') !== -1) throw new Error('Exercise names in a superset cannot contain "/"');
+    return 'Superset: ' + a + ' / ' + b;
+  }
+
+  function supersetParts(name) {
+    var m = /^\s*superset\s*:\s*(.+?)\s*\/\s*(.+?)\s*$/i.exec(String(name == null ? '' : name));
+    return m ? { a: m[1], b: m[2] } : null;
+  }
+
   const api = {
+    sessionDateFromId: sessionDateFromId,
+    makeSupersetName: makeSupersetName,
+    supersetParts: supersetParts,
     calcLoad: calcLoad,
     calcExerciseLoad: calcExerciseLoad,
     calcWorkoutLoad: calcWorkoutLoad,
