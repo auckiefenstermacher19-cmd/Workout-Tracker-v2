@@ -160,17 +160,22 @@ function renderRecords() {
 
     for (const day of DAY_ORDER) {
       const dayExercises = recState.exercisesByDay[day] || [];
+      // A superset's records are filed per half: "<name> (A)" and "<name> (B)"
+      // (see recordExerciseName). Older files may still hold the plain name.
+      const recordNamesFor = ex => [ex.name, ex.name + ' (A)', ex.name + ' (B)'];
       // Only show this day section if at least one of its exercises has records
-      const hasAnyRecords = dayExercises.some(ex => byExercise.has(ex.name));
+      const hasAnyRecords = dayExercises.some(ex => recordNamesFor(ex).some(n => byExercise.has(n)));
       if (!hasAnyRecords) continue;
 
       html += '<div class="records-day-section">';
       html += '<div class="records-day-heading" data-day="' + escapeHtml(day) + '">' + escapeHtml(day) + '</div>';
 
       for (const ex of dayExercises) {
-        if (!byExercise.has(ex.name)) continue;
-        html += renderExerciseRecordCard(ex.name, byExercise.get(ex.name));
-        renderedExercises.add(ex.name);
+        for (const n of recordNamesFor(ex)) {
+          if (!byExercise.has(n) || renderedExercises.has(n)) continue;
+          html += renderExerciseRecordCard(supersetHalfLabel(ex.name, n), byExercise.get(n));
+          renderedExercises.add(n);
+        }
       }
 
       html += '</div>';
@@ -221,6 +226,15 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// "Superset: Curl / Pushdown (B)" reads as "Pushdown (superset B)".
+function supersetHalfLabel(exerciseName, recordName) {
+  if (recordName === exerciseName) return recordName;
+  const slot = recordName.slice(-2, -1); // "A" or "B"
+  const parts = supersetParts(exerciseName);
+  if (!parts) return exerciseName + ' · ' + slot; // e.g. "Lateral Raise SuperSet · B"
+  return (slot === 'A' ? parts.a : parts.b) + ' (superset ' + slot + ')';
 }
 
 function renderExerciseRecordCard(exerciseName, recs) {

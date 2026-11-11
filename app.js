@@ -381,7 +381,7 @@ function computeAllTimeRecords(allWorkoutRows) {
   for (const row of allWorkoutRows) {
     if (!row.reps || row.reps <= 0 || !row.weight || row.weight <= 0) continue;
 
-    const key = row.exercise + '|' + row.reps;
+    const key = recordExerciseName(row.exercise, row.setNumber) + '|' + row.reps;
     const existing = best.get(key);
 
     if (!existing || row.weight > existing.weight ||
@@ -411,27 +411,6 @@ function computeAllTimeRecords(allWorkoutRows) {
   });
 
   return records;
-}
-
-function mergeNewSetIntoRecords(existingRecords, exercise, weight, reps, date) {
-  if (!weight || weight <= 0 || !reps || reps <= 0) return existingRecords;
-
-  const result = existingRecords.map(r => Object.assign({}, r));
-  const idx = result.findIndex(r => r.exercise === exercise && r.repCount === reps);
-
-  if (idx === -1) {
-    result.push({ exercise: exercise, repCount: reps, weight: weight, dateAchieved: date });
-  } else if (weight > result[idx].weight) {
-    result[idx].weight = weight;
-    result[idx].dateAchieved = date;
-  }
-
-  result.sort((a, b) => {
-    if (a.exercise !== b.exercise) return a.exercise.localeCompare(b.exercise);
-    return a.repCount - b.repCount;
-  });
-
-  return result;
 }
 
 function getRecordsForExercise(records, exercise) {
@@ -842,18 +821,21 @@ async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   // functional before the index.html session-id lifecycle task lands).
   const sid = (sessionId != null && sessionId !== '') ? sessionId : (date + '|' + workoutDay);
 
+  let savedRows = null;
   const result = await withConflictRetry(async () => {
     const fileData = await getCSVFile();
     const allRows = parseWorkoutCSV(fileData.content);
     if (exercisesMap.size === 0 && !allRows.some(r => r.sessionId === sid)) return null;
     const newSessionRows = rebuildSessionRows(sid, date, workoutDay, exercisesMap);
     const merged = commitReplaceSession(allRows, sid, newSessionRows);
-    return putToWorker('/csv', serializeWorkoutCSV(merged), fileData.sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
+    const res = await putToWorker('/csv', serializeWorkoutCSV(merged), fileData.sha, 'Autosave ' + workoutDay + ' \u2014 ' + date);
+    savedRows = merged;
+    return res;
   });
   if (result === null) return null;
 
   try {
-    await withConflictRetry(() => updateRecordsFromSession(exercisesMap, date));
+    await syncRecordsWithHistory(savedRows, 'Update personal records \u2014 ' + date);
   } catch (e) {
     console.warn('Personal records update failed:', e);
   }
@@ -861,42 +843,28 @@ async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   return result;
 }
 
-async function updateRecordsFromSession(exercisesMap, date) {
-  const fileData = await getRecordsFile();
-  const content = fileData.content;
-  const sha = fileData.sha;
-  let records = parseRecordsCSV(content);
-  let changed = false;
-
-  for (const entry of exercisesMap) {
-    const exerciseName = entry[0];
-    const sets = entry[1];
-    for (const set of sets) {
-      if (!set.weight || set.weight <= 0 || !set.reps || set.reps <= 0) continue;
-      const before = records.find(r => r.exercise === exerciseName && r.repCount === set.reps);
-      const beforeWeight = before ? before.weight : -1;
-      records = mergeNewSetIntoRecords(records, exerciseName, set.weight, set.reps, date);
-      const after = records.find(r => r.exercise === exerciseName && r.repCount === set.reps);
-      if (after && after.weight > beforeWeight) changed = true;
-    }
-  }
-
-  if (!changed) return;
-
+/**
+ * syncRecordsWithHistory(allRows, commitMessage)
+ * Rewrites personal_records.csv as the best set per exercise and rep count
+ * across the given full history, and only writes when that differs from what
+ * is stored. Recomputing (instead of only ever raising a record) means a typo
+ * like 2555 that autosaved mid-workout drops out again once it is corrected.
+ * Returns the records.
+ */
+async function syncRecordsWithHistory(allRows, commitMessage) {
+  const records = computeAllTimeRecords(allRows);
   const csvText = serializeRecordsCSV(records);
-
-  await putToWorker('/records', csvText, sha, 'Update personal records \u2014 ' + date);
+  await withConflictRetry(async () => {
+    const fileData = await getRecordsFile();
+    if (serializeRecordsCSV(parseRecordsCSV(fileData.content)) === csvText) return;
+    await putToWorker('/records', csvText, fileData.sha, commitMessage);
+  });
+  return records;
 }
 
 async function rebuildAllRecordsFromHistory() {
-  const workoutRaw = await getRawCSV();
-  const allRows = parseCSV(workoutRaw);
-  const records = computeAllTimeRecords(allRows);
-
-  const csvText = serializeRecordsCSV(records);
-  await replaceRecordsContent(csvText, 'Recalculate personal records from full history');
-
-  return records;
+  const { content } = await getCSVFile();
+  return syncRecordsWithHistory(parseWorkoutCSV(content), 'Recalculate personal records from full history');
 }
 
 function buildExercisesMapFromDOM(sessionEntryEl) {
@@ -1004,7 +972,7 @@ function serializeSessionForStorage(sessionEntryEl, workoutDay) {
 // time exactly as before). No behavior change for the PWA.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    serializeRecordsCSV, parseRecordsCSV, escapeHtml,
+    serializeRecordsCSV, parseRecordsCSV, escapeHtml, computeAllTimeRecords,
     serializeSessionForStorage, buildExercisesMapFromDOM
   };
 }

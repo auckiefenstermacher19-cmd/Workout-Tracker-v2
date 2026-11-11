@@ -169,7 +169,9 @@
 
 const MANAGE_PALETTE = ['#c084fc', '#fb923c', '#38bdf8', '#facc15', '#f472b6', '#4ade80', '#f87171', '#a3a3a3'];
 
-const manageState = { model: null, original: null, saving: false, wired: false, renameHistory: true };
+// exRenames: exercise renames since the last save, [{oldName, newName}], so
+// Save can carry past history (and records) over to the new name.
+const manageState = { model: null, original: null, saving: false, wired: false, renameHistory: true, exRenames: [] };
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!WORKER_CONFIG.isConfigured) {
@@ -224,13 +226,14 @@ function renderManage() {
           '<span class="save-status-dot"></span><span id="mng-save-status-text"></span></span>';
   html += '</div>';
 
-  if (renames.length > 0) {
+  const allRenames = renames.concat(manageState.exRenames);
+  if (allRenames.length > 0) {
     const checkedAttr = manageState.renameHistory ? ' checked' : '';
     html += '<label class="mng-rename-opt"><input type="checkbox" id="mng-rename-history" ' +
       'data-field="rename-history"' + checkedAttr + ' /> ' +
       'Also rename ' +
-      renames.map(r => '“' + escapeHtml(r.oldName) + '”→“' + escapeHtml(r.newName) + '”').join(', ') +
-      ' in past workout history</label>';
+      allRenames.map(r => '“' + escapeHtml(r.oldName) + '”→“' + escapeHtml(r.newName) + '”').join(', ') +
+      ' in past workout history and records</label>';
   }
 
   for (const day of model.days) {
@@ -382,7 +385,10 @@ function onManageChange(e) {
   const exName = el.dataset.exName;
   try {
     if (field === 'day-name')      manageState.model = renameDay(manageState.model, dayId, el.value);
-    else if (field === 'ex-name')  manageState.model = renameExercise(manageState.model, dayId, exName, el.value);
+    else if (field === 'ex-name') {
+      manageState.model = renameExercise(manageState.model, dayId, exName, el.value);
+      manageState.exRenames = addExerciseRename(manageState.exRenames, exName, el.value.trim());
+    }
     else if (field === 'ex-sets')  manageState.model = setDefaultSets(manageState.model, dayId, exName, el.value);
     else if (field === 'rename-history') { manageState.renameHistory = el.checked; return; }
     else return;
@@ -405,21 +411,20 @@ async function saveExercisesModelWithRetry(model) {
   }
 }
 
-async function renameDaysInHistoryWithRetry(renames) {
-  async function attempt() {
+// Rewrites day and exercise names in past history in one CSV write, then
+// rebuilds personal records from that history so records follow the rename.
+async function renameInHistoryWithRetry(dayRenames, exRenames) {
+  const rows = await withConflictRetry(async () => {
     const { content, sha } = await getCSVFile();
     let rows = parseWorkoutCSV(content);
     // Single pass keyed on each row's ORIGINAL day so a chained rename in one save
     // (e.g. Legs→Chest, Chest→Push) can't re-rename already-touched rows.
-    rows = renameDaysInRows(rows, renames);
-    return putToWorker('/csv', serializeWorkoutCSV(rows), sha, 'Rename workout day(s) in history (Manage)');
-  }
-  try {
-    return await attempt();
-  } catch (e) {
-    if (/\b409\b/.test(e.message)) return await attempt();
-    throw e;
-  }
+    rows = renameDaysInRows(rows, dayRenames);
+    rows = renameExercisesInRows(rows, exRenames);
+    await putToWorker('/csv', serializeWorkoutCSV(rows), sha, 'Rename in workout history (Manage)');
+    return rows;
+  });
+  if (exRenames.length > 0) await syncRecordsWithHistory(rows, 'Rename exercise(s) in personal records (Manage)');
 }
 
 async function doSave() {
@@ -427,7 +432,8 @@ async function doSave() {
   const statusEl = document.getElementById('mng-save-status');
   const statusText = document.getElementById('mng-save-status-text');
   const renames = diffDayRenames(manageState.original, manageState.model);
-  const doHistory = renames.length > 0 && manageState.renameHistory;
+  const exRenames = manageState.exRenames.slice();
+  const doHistory = (renames.length > 0 || exRenames.length > 0) && manageState.renameHistory;
 
   manageState.saving = true;
   statusEl.dataset.state = 'saving';
@@ -437,8 +443,9 @@ async function doSave() {
     await saveExercisesModelWithRetry(manageState.model);
     if (doHistory) {
       statusText.textContent = 'Updating history…';
-      await renameDaysInHistoryWithRetry(renames);
+      await renameInHistoryWithRetry(renames, exRenames);
     }
+    manageState.exRenames = [];
     // Re-pin the baseline so subsequent edits diff from the just-saved state.
     manageState.original = adaptExercisesModel(JSON.parse(serializeExercisesModel(manageState.model)));
     showToast('Changes saved', 'success');

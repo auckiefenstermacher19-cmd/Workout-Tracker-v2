@@ -182,6 +182,39 @@
     return m ? m[1].toUpperCase() : '';
   }
 
+  // The name a set's personal record is filed under. Superset halves are
+  // different movements, so "Superset: Curl / Pushdown" set 2B is filed as
+  // "Superset: Curl / Pushdown (B)" -- otherwise a heavier A hides B's best.
+  function recordExerciseName(exercise, setNumber) {
+    const slot = setSlot(setNumber);
+    return slot ? exercise + ' (' + slot + ')' : exercise;
+  }
+
+  // Exercise renames from Manage, applied to workout history in ONE pass via an
+  // original->final map (same shape and reasoning as renameDaysInRows).
+  function renameExercisesInRows(rows, renames) {
+    const map = new Map((renames || []).map(function (r) { return [r.oldName, r.newName]; }));
+    return rows.map(function (r) {
+      return map.has(r.exercise)
+        ? Object.assign({}, r, { exercise: map.get(r.exercise) })
+        : r;
+    });
+  }
+
+  // Folds one more rename into a running list so chains collapse
+  // (A->B then B->C becomes A->C; A->B then B->A cancels out).
+  function addExerciseRename(renames, oldName, newName) {
+    const out = (renames || []).map(function (r) { return Object.assign({}, r); });
+    if (oldName === newName) return out;
+    const prior = out.find(function (r) { return r.newName === oldName; });
+    if (prior) {
+      prior.newName = newName;
+      return out.filter(function (r) { return r.oldName !== r.newName; });
+    }
+    out.push({ oldName: oldName, newName: newName });
+    return out;
+  }
+
   // True when `row` belongs to a session strictly earlier than the one being
   // logged. Ordering is (date, sessionId); session ids are YYYY-MM-DD-HHMMSS,
   // so two sessions on one day order correctly and the second sees the first.
@@ -641,6 +674,9 @@
 
   const api = {
     sessionDateFromId: sessionDateFromId,
+    recordExerciseName: recordExerciseName,
+    renameExercisesInRows: renameExercisesInRows,
+    addExerciseRename: addExerciseRename,
     makeSupersetName: makeSupersetName,
     supersetParts: supersetParts,
     calcLoad: calcLoad,
