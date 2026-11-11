@@ -820,6 +820,10 @@ async function commitTodaysWorkout(date, workoutDay, exercisesMap, sessionId) {
   // Fall back to the legacy date+day key if no explicit id (keeps this commit
   // functional before the index.html session-id lifecycle task lands).
   const sid = (sessionId != null && sessionId !== '') ? sessionId : (date + '|' + workoutDay);
+  // Long-term guard: a session is always filed under the day it started, no
+  // matter which caller saves it or what date it passes in. A resumed old
+  // draft once moved 15 workouts onto later days this way.
+  date = sessionDateFromId(sid, date);
 
   let savedRows = null;
   const result = await withConflictRetry(async () => {

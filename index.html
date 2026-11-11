@@ -213,7 +213,12 @@ function renderResumeBanners() {
     const strong = document.createElement('strong');
     strong.textContent = day;
     text.appendChild(strong);
-    text.appendChild(document.createTextNode(' has unsaved local changes'));
+    // Say which day the draft is from, so an old workout is not resumed by
+    // mistake as if it were today's.
+    const draft = loadFromLocalStorage(day);
+    const started = sessionDateFromId((draft && draft.sessionId) || loadSessionId(day), null);
+    const fromText = started && started !== todayISO() ? ' from ' + formatDisplayDate(started) : '';
+    text.appendChild(document.createTextNode(fromText + ' has unsaved local changes'));
 
     const actions = document.createElement('div');
     actions.className = 'resume-banner-actions';

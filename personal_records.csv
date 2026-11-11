@@ -1,36 +1,36 @@
 Exercise,RepCount,Weight,DateAchieved
 Archer Pulls,10,42,2026-11-05
 BB Curl,6,105,2026-08-07
-BB Curl,7,100,2026-08-06
-BB Curl,8,100,2026-10-03
+BB Curl,7,100,2026-08-05
+BB Curl,8,100,2026-11-06
 BB Curl,10,100,2026-11-06
 BB Curl,12,70,2026-07-18
 BB Flat Bench,1,255,2026-08-17
 BB Flat Bench,2,225,2026-08-17
 BB Flat Bench,3,225,2026-09-22
-BB Flat Bench,4,225,2026-09-08
+BB Flat Bench,4,225,2026-09-22
 BB Flat Bench,5,235,2026-09-08
 BB Row,5,255,2026-05-20
 BB Row,6,265,2026-11-04
-BB Row,7,265,2026-08-20
+BB Row,7,265,2026-08-18
 BB Row,8,255,2026-08-18
 BB Row,10,225,2026-07-18
 BB shoulder Press,3,165,2026-08-20
-BB shoulder Press,5,155,2026-08-06
-BB shoulder Press,6,155,2026-08-20
+BB shoulder Press,5,155,2026-10-03
+BB shoulder Press,6,155,2026-10-03
 BB shoulder Press,8,155,2026-08-20
 BB shoulder Press,9,155,2026-10-03
 BB Shrugs,9,405,2026-08-06
-BB Shrugs,10,405,2026-08-26
+BB Shrugs,10,405,2026-08-20
 BB Shrugs,12,225,2026-06-17
 BB Squat,1,325,2026-06-21
-BB Squat,2,275,2026-08-05
+BB Squat,2,275,2026-08-03
 BB Squat,3,255,2026-10-11
 BB Squat,4,255,2026-10-11
-BB Squat,5,255,2026-08-05
-BB Squat,6,225,2026-08-05
-Bulgarian Split Squat,5,80,2026-07-25
-Bulgarian Split Squat,6,80,2026-07-25
+BB Squat,5,255,2026-08-03
+BB Squat,6,225,2026-08-03
+Bulgarian Split Squat,5,80,2026-07-24
+Bulgarian Split Squat,6,80,2026-07-24
 Bulgarian Split Squat,8,100,2026-06-21
 Bulgarian Split Squat,10,50,2026-06-12
 Cable Curls,6,65,2026-08-07
@@ -40,7 +40,7 @@ Cable Curls,12,60,2026-05-20
 Cable Lat Raise,10,20,2026-10-08
 Cable Lat Raises,10,20,2026-10-03
 Cable Lat Raises,15,15,2026-06-17
-Cable Rows,8,227,2026-08-06
+Cable Rows,8,227,2026-08-05
 Cable Rows,10,150,2026-05-20
 Flat Bench,2,235,2026-08-05
 Flat Bench,4,225,2026-08-05
@@ -53,17 +53,18 @@ Incline Bench,5,165,2026-08-05
 Incline Bench,6,165,2026-08-05
 Incline Bench,8,165,2026-06-05
 Lat Pull Downs,10,165,2026-04-29
-Lateral Raise SuperSet,7,17,2026-11-05
-Lateral Raise SuperSet,10,35,2026-08-20
-Lateral Raise SuperSet,12,25,2026-08-06
 Lateral Raise SuperSet,15,25,2026-06-17
+Lateral Raise SuperSet (A),10,35,2026-08-20
+Lateral Raise SuperSet (B),7,17,2026-11-05
+Lateral Raise SuperSet (B),10,25,2026-08-20
+Lateral Raise SuperSet (B),12,25,2026-08-06
 Leg Extension,5,210,2026-10-11
 Leg Extension,6,210,2026-10-11
 Leg Extension,8,200,2026-08-11
 Leg Extension,10,180,2026-08-11
 Leg Extension,12,130,2026-06-12
 Leg Press,4,6,2026-08-11
-Leg Press,5,5,2026-07-25
+Leg Press,5,5,2026-07-24
 Leg Press,6,5.5,2026-08-11
 Leg Press,7,5,2026-08-11
 Leg Press,8,5,2026-08-11
@@ -75,24 +76,24 @@ Machine Cheat Press,8,150,2026-07-17
 Machine Cheat Press,12,160,2026-08-13
 Machine Chest Press,3,207,2026-10-28
 Machine Chest Press,4,207,2026-10-28
-Machine Chest Press,5,207,2026-10-06
+Machine Chest Press,5,207,2026-10-28
 Machine Chest Press,6,197,2026-08-26
 Machine Chest Press,7,187,2026-08-17
-Machine Chest Press,8,197,2026-10-06
+Machine Chest Press,8,197,2026-10-28
 Machine Chest Press,10,187,2026-10-06
 Machine Incline,5,165,2026-10-06
 Machine Incline,6,165,2026-10-28
 Machine Incline,7,155,2026-09-08
-Machine Incline,8,155,2026-09-08
+Machine Incline,8,155,2026-10-28
 Machine Incline,9,155,2026-10-06
 Machine Incline,10,155,2026-10-28
-Machine Shoulder Press,6,185,2026-11-05
+Machine Shoulder Press,6,155,2026-11-05
 Machine Shoulder Press,7,155,2026-10-08
 Machine Shoulder Press,9,155,2026-11-05
 Machine Shoulder Press,10,145,2026-10-08
 Peck Flys,6,220,2026-10-28
-Peck Flys,7,200,2026-08-05
-Peck Flys,8,200,2026-08-05
+Peck Flys,7,200,2026-10-07
+Peck Flys,8,200,2026-09-08
 Peck Flys,10,200,2026-10-28
 Peck Flys,12,70,2026-06-05
 Rear Delts,8,167,2026-08-06
@@ -103,15 +104,15 @@ Skull Crushers,7,115,2026-08-07
 Skull Crushers,8,115,2026-08-07
 Skull Crushers,10,115,2026-08-07
 T bar Row,6,150,2026-11-04
-T bar Row,8,135,2026-10-07
+T bar Row,8,135,2026-11-04
 Tricep Pushdown,5,110,2026-09-08
-Tricep Pushdown,6,110,2026-09-08
-Tricep Pushdown,7,155,2026-10-07
+Tricep Pushdown,6,110,2026-10-28
+Tricep Pushdown,7,155,2026-10-06
 Tricep Pushdown,8,110,2026-10-06
 Tricep Pushdown,9,105,2026-10-28
-Tricep Pushdown,10,105,2026-08-18
-Tricep Pushdown,12,100,2026-08-13
+Tricep Pushdown,10,105,2026-10-03
+Tricep Pushdown,12,100,2026-10-03
 Weighted Pull Ups,5,55,2026-11-04
-Weighted Pull Ups,6,55,2026-08-20
-Weighted Pull Ups,7,55,2026-08-20
-Weighted Pull Ups,8,45,2026-05-20
+Weighted Pull Ups,6,55,2026-11-04
+Weighted Pull Ups,7,55,2026-10-07
+Weighted Pull Ups,8,45,2026-10-07
